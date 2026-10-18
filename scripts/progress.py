@@ -379,12 +379,11 @@ class ModuleResolver:
 
 
 def issue_counts(issues: list[dict], cutoff: dt.datetime, resolver: ModuleResolver,
-                 merged_for: dict[int, dt.datetime] | None = None) -> dict[str, dict]:
+                 merged_for: dict[int, dt.datetime] | None = None, strict: bool = False) -> dict[str, dict]:
     """Per module: total, closed and done issues as they stood at `cutoff`.
 
-    An issue is *done* when it is closed, or when a merged pull request references it (`merged_for`
-    maps issue number -> earliest merge time): repositories that close issues only after QA would
-    otherwise report every merged build as 0%.
+    Default: an issue is *done* when it is closed, or when `merged_for` has it. With `strict`, `merged_for` alone
+    decides, and the caller puts in it only issues with merged work that are also closed or labelled done.
     """
     merged_for = merged_for or {}
     out: dict[str, dict] = {}
@@ -399,7 +398,7 @@ def issue_counts(issues: list[dict], cutoff: dt.datetime, resolver: ModuleResolv
             continue
         closed = it.get("state") == "closed" and closed_at is not None and closed_at <= cutoff
         merged_at = merged_for.get(it["number"])
-        done = closed or (merged_at is not None and merged_at <= cutoff)
+        done = (merged_at is not None and merged_at <= cutoff) if strict else (closed or (merged_at is not None and merged_at <= cutoff))
         for m in mods:
             row = out.setdefault(m, {"total": 0, "closed": 0, "done": 0})
             row["total"] += 1
@@ -645,10 +644,11 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
         for n in refs:
             if t is not None and (n not in pr_merge or t < pr_merge[n]):
                 pr_merge[n] = t
-    merged_for: dict[int, dt.datetime] = dict(pr_merge) if entry.get("doneFromPRs", False) else {}
+    merged_for: dict[int, dt.datetime] = {}
+    merged_commit: dict[int, dt.datetime] = {}
 
     # optional third signal: a commit on the default branch that cites the issue (`Ref #68`)
-    if entry.get("doneFromCommits"):
+    if entry.get("doneFromCommits", True):
         lookback = int(entry.get("commitLookbackDays") or 180)
         since = (now - dt.timedelta(days=lookback)).strftime("%Y-%m-%dT%H:%M:%SZ")
         branch = default_branch(entry, gh, full)
@@ -659,45 +659,45 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
             message = (c.get("commit") or {}).get("message") or ""
             subject, _, rest = message.partition("\n")
             for n in issue_refs(subject, rest, ref_rule):
-                if n in resolver.by_issue and t is not None and (n not in merged_for or t < merged_for[n]):
-                    merged_for[n] = t
+                if n in resolver.by_issue and t is not None and (n not in merged_commit or t < merged_commit[n]):
+                    merged_commit[n] = t
 
-    # label signals. `doneLabels`: done from the moment the label went on. `qaLabels` + a merged pull request that
-    # names the issue: done once both have happened (QA passed, then merged). The merge alone never counts.
+    # What "done" means: merged work AND marked done. Merged work is a merged PR that names the issue, or (with
+    # doneFromCommits, the default) a commit on the default branch that cites it. Marked done is the issue being
+    # closed or carrying a done label. `qaLabels` + merged work earns the done label, which the pass below applies.
+    merged_work: dict[int, dt.datetime] = dict(pr_merge)
+    for n, t in merged_commit.items():
+        if n not in merged_work or t < merged_work[n]:
+            merged_work[n] = t
     labelled: list[int] = []
-    if done_labels or qa_labels:
-        by_number ={i["number"]: i for i in issues}
-        for n, it in by_number.items():
-            if n not in resolver.by_issue:
-                continue
-            names = set(label_names(it))
-            times = []
-            if done_labels & names:
-                times.append(label_applied_at(gh, full, it, done_labels))
-            if qa_labels & names and n in pr_merge:
-                qa_t = label_applied_at(gh, full, it, qa_labels)
-                times.append(max(qa_t, pr_merge[n]) if qa_t else pr_merge[n])
-            times = [x for x in times if x]
-            if times and (n not in merged_for or min(times) < merged_for[n]):
-                merged_for[n] = min(times)
-            # the label pass: QA passed and merged is `done`, so say so on the issue itself
-            if (qa_labels & names and n in pr_merge and done_labels and not done_labels & names
-                    and entry.get("manageLabels", True)):
-                if apply_label(gh, full, it, sorted(done_labels)[0], warnings):
-                    labelled.append(n)
-        if labelled:
-            log(f"{full}: labelled done: " + ", ".join(f"#{n}" for n in labelled))
-        if qa_labels:
-            gap = sorted(n for n in pr_merge if n in by_number and not qa_labels & set(label_names(by_number[n]))
-                         and by_number[n].get("state") != "closed" and resolver.is_tracked(by_number[n]))
-            if gap:
-                warnings.append(f"{len(gap)} issue(s) have a merged PR but no {'/'.join(sorted(qa_labels))} label (merged without recorded QA): "
-                                + ", ".join(f"#{n}" for n in gap[:15]) + (" ..." if len(gap) > 15 else ""))
-        if unlinked:
-            warnings.append(f"{unlinked} merged PR(s) name no tracked issue (put 'Story #N' in the title or body so QA and merges can be matched)")
+    by_number = {i["number"]: i for i in issues}
+    for n, it in by_number.items():
+        if n not in resolver.by_issue or n not in merged_work:
+            continue
+        names = set(label_names(it))
+        if qa_labels & names and done_labels and not done_labels & names and entry.get("manageLabels", True):
+            if apply_label(gh, full, it, sorted(done_labels)[0], warnings):
+                labelled.append(n)
+                names = set(label_names(it))
+        marked = []
+        if it.get("state") == "closed" and it.get("state_reason") not in ("not_planned", "duplicate"):
+            marked.append(parse_ts(it.get("closed_at")))
+        if done_labels & names:
+            marked.append(label_applied_at(gh, full, it, done_labels) if n not in labelled else now)
+        marked = [x for x in marked if x]
+        if marked:
+            merged_for[n] = max(merged_work[n], min(marked))
+    if labelled:
+        log(f"{full}: labelled done: " + ", ".join(f"#{n}" for n in labelled))
+    stuck = sorted(n for n in merged_work if n in by_number and n not in merged_for and resolver.is_tracked(by_number[n]))
+    if stuck:
+        warnings.append(f"{len(stuck)} issue(s) have merged work but are not closed or labelled done: "
+                        + ", ".join(f"#{n}" for n in stuck[:15]) + (" ..." if len(stuck) > 15 else ""))
+    if unlinked:
+        warnings.append(f"{unlinked} merged PR(s) name no tracked issue (put 'Story #N' in the title or body so merges can be matched)")
 
     points = {"now": now, "day": now - DAY, "week": now - WEEK, "two_weeks": now - 2 * WEEK}
-    counts = {k: issue_counts(issues, t, resolver, merged_for) for k, t in points.items()}
+    counts = {k: issue_counts(issues, t, resolver, merged_for, strict=True) for k, t in points.items()}
 
     open_prs = [p for p in prs if p.get("state") == "open"]
     pr_mods = {p["number"]: attribute_pr(p, resolver, domain_to_module) for p in prs}
@@ -869,7 +869,7 @@ def state_chip(cell: dict | None, prev: dict | None = None) -> str:
 def render_html(report: dict) -> str:
     parts = [HTML_HEAD, f"<h1>Build progress</h1><p class=\"sub\">{html.escape(report['date'])} · "
              f"{len(report['repos'])} active {'repository' if len(report['repos']) == 1 else 'repositories'} · "
-             "% complete = done tracked issues / all tracked issues per module (done = closed, or the repository's own done signal); deltas are recomputed from GitHub timestamps.</p>"]
+             "% complete = done tracked issues / all tracked issues per module (done = merged work that is also closed or labelled done); deltas are recomputed from GitHub timestamps.</p>"]
     if len(report["repos"]) > 1:
         parts.append("<h2>All active builds</h2><div class=\"card\"><table><thead><tr><th>Repository</th><th class=num>% complete</th>"
                      "<th class=num>Δ 1d</th><th class=num>Δ 7d</th><th class=num>Issues closed 7d</th><th class=num>PRs merged 7d</th>"

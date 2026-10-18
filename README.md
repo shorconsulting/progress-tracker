@@ -64,19 +64,19 @@ The prompt runs the command unattended and ends with the artifact link.
     (`[E03]` -> E03 in wyset, `Epic D` -> Epic D in tidyhaus); an epic the pattern misses shows as `#<number>`.
   Issues with no module form **M00 Foundation / unattributed**. Modules are always listed in the same order:
   M00, then ids ascending numerically (9.1, 9.2, 9.10), then lettered, then `#n`.
-- **% complete (module)**: done tracked issues / all tracked issues. *Done* = closed, or claimed by a merged
-  pull request, because many repositories close issues only after QA. A PR claims an issue when `#N` is in its
+- **% complete (module)**: done tracked issues / all tracked issues. *Done* = merged work and marked done (closed or
+  labelled `done`; see below). A PR claims an issue when `#N` is in its
   title, or in its body after Ref / Closes / Fixes / Resolves / Implements / Issue(s), lists included
   (`Issues #346, #347 and #348`); a bare `#N` elsewhere in the body ("#110 was read for context") does not
   count. `issueRefRule: "any"` per repository relaxes that to every `#N`. With `doneFromCommits: true`
   (wyset, where work lands on main with `Ref #NN` and stories stay open) a default-branch commit citing the
   issue counts too, within `commitLookbackDays`. `trackedIssueLabels` limits the base (`agent:build`, `story`);
   `excludeIssueLabels` drops epics, questions, duplicates and the like.
-  Every repository uses the same status labels by default: `qa-passed` plus a merged PR that names the issue
-  ("Story #N") counts done, `done` counts done outright, and a merge without `qa-passed` counts for nothing and is
-  listed as a warning. A report run first creates the labels where missing and puts `done` on issues that earned it
-  (`report --no-write` for a read-only run). `qaLabels` / `doneLabels` rename them or, set to `[]`, opt a repo out;
-  `doneFromPRs: true` restores counting a bare merge.
+  **Done = merged work AND marked done**, in every repository. Merged work: a merged PR that names the issue, or a
+  commit on the default branch that cites it. Marked done: the issue is closed or carries `done`. An issue with merged
+  work and `qa-passed` earns `done`, which a report run applies itself after creating any missing status label
+  (`report --no-write` for a read-only run). Merged work that is not marked is listed as a warning, as are merged PRs
+  that name no issue. `qaLabels` / `doneLabels` rename the labels or, set to `[]`, opt a repo out.
 - **Δ 1d / Δ 7d**: the same percentage recomputed as of 24 hours / 7 days ago (issues that existed then, done by
   then), in percentage points. A negative delta means new issues were filed faster than work landed.
 - **PRs 1d / 7d / open**: merged pull requests attributed to the module by label, a mention matching

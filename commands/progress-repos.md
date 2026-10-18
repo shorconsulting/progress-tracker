@@ -30,11 +30,12 @@ With no arguments, run `repos list`. Report the command's output as is. Each ent
 - `issueRefRule`: `keyword` (default: `#N` in a PR title, or after Ref / Closes / Fixes / Resolves / Implements /
   Issue(s) in its body) or `any` (every `#N`).
 - `doneFromCommits` (+ `commitLookbackDays`): also count an issue done when a default-branch commit cites it.
-- Status labels, the same in every repository by default: `qa-passed` (QA signed off, ready to merge) and `done`
-  (passed QA and merged). An issue counts done when it is closed, carries `done`, or carries `qa-passed` and a merged PR
-  names it ("Story #N" in the title or body, or any `issueRefRule` form). A merge without `qa-passed` never counts
-  and is listed as a warning. Set `qaLabels` / `doneLabels` to change the names, or to `[]` to opt a repository out.
-- `doneFromPRs` (default false): also count an issue done on a merged PR alone. Leave it off wherever QA matters.
-- `manageLabels` (default true): each report run first creates any missing status label in the repository, then puts
-  `done` on every issue that has `qa-passed` and a merged PR, then builds the report from the result. `report --no-write`
-  skips the writing and only reads.
+- What *done* means, the same in every repository: **merged work AND marked done**. Merged work is a merged PR that names
+  the issue ("Story #N" or `#N` in the title, `Ref` / `Closes` in the body) or a commit on the default branch that cites
+  it (`doneFromCommits`, default true, within `commitLookbackDays`). Marked done is the issue being closed (not as
+  not-planned or duplicate) or carrying the `done` label. Closed with no merged work, or merged with no mark, does not
+  count; the report warns about merged work that is not marked.
+- Status labels: `qa-passed` (QA signed off, ready to merge) and `done` (passed QA and merged). An issue with merged work
+  and `qa-passed` earns `done`, which the report run applies itself. `qaLabels` / `doneLabels` rename them, or `[]` opts out.
+- `manageLabels` (default true): each report run first creates any missing status label, then puts `done` on issues that
+  have merged work and `qa-passed`, then builds the report from the result. `report --no-write` only reads.
