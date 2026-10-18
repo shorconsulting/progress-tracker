@@ -1,0 +1,315 @@
+{
+  "$schema": "progress-tracker module probes v1",
+  "_comment": "Module names from Ranch_Rides_Test_Cases.xlsx and the PRD (section 9.x). Issue labels module:9.x map to these ids. No code probes yet (code: false), so the report carries issue and PR progress only.",
+  "code": false,
+  "modules": [
+    {
+      "id": "9.1",
+      "name": "Account, Identity & Profile"
+    },
+    {
+      "id": "9.2",
+      "name": "Preferences (Driver & Rider)"
+    },
+    {
+      "id": "9.3",
+      "name": "Scheduling & Recurring"
+    },
+    {
+      "id": "9.4",
+      "name": "Multi-Channel Intake & Conversational AI"
+    },
+    {
+      "id": "9.5",
+      "name": "Ride Request & Booking"
+    },
+    {
+      "id": "9.6",
+      "name": "Driver Vehicles & Capacity"
+    },
+    {
+      "id": "9.7",
+      "name": "Pricing & Quoting"
+    },
+    {
+      "id": "9.8",
+      "name": "Driver Rates, Payouts & Network Rates"
+    },
+    {
+      "id": "9.9",
+      "name": "Payments"
+    },
+    {
+      "id": "9.10",
+      "name": "Driver Availability & Onboarding the Calendar"
+    },
+    {
+      "id": "9.11",
+      "name": "Network / Partner Management"
+    },
+    {
+      "id": "9.12",
+      "name": "Driver Selection & Matching"
+    },
+    {
+      "id": "9.13",
+      "name": "Pre-Ride & In-Ride Experience"
+    },
+    {
+      "id": "9.14",
+      "name": "In-Car Recording"
+    },
+    {
+      "id": "9.15",
+      "name": "Feedback & Two-Way Ratings"
+    },
+    {
+      "id": "9.16",
+      "name": "Platform Fees & Superadmin Configuration"
+    },
+    {
+      "id": "9.17",
+      "name": "Tracking & Economics"
+    },
+    {
+      "id": "9.18",
+      "name": "Airport & Travel Coordination"
+    },
+    {
+      "id": "9.19",
+      "name": "External Network Interoperability"
+    },
+    {
+      "id": "9.20",
+      "name": "Corporate Accounts"
+    },
+    {
+      "id": "9.21",
+      "name": "Driver Onboarding, Vetting & Background Checks"
+    },
+    {
+      "id": "9.22",
+      "name": "Trust, Safety & SOS"
+    },
+    {
+      "id": "9.23",
+      "name": "Policy & Compliance Documents"
+    },
+    {
+      "id": "9.24",
+      "name": "Driver Business Tools"
+    },
+    {
+      "id": "9.25",
+      "name": "Rider Support Tools"
+    },
+    {
+      "id": "9.26",
+      "name": "Brand, Marketing & Partner Services"
+    },
+    {
+      "id": "9.27",
+      "name": "Geo Landing Page Builder"
+    },
+    {
+      "id": "9.28",
+      "name": "Superadmin Web Portal & Admin Console"
+    },
+    {
+      "id": "9.29",
+      "name": "Analytics, Tagging & Tracking"
+    },
+    {
+      "id": "9.30",
+      "name": "Custom Branded App Publishing"
+    },
+    {
+      "id": "9.31",
+      "name": "Driver-Owner Web Portal"
+    },
+    {
+      "id": "9.32",
+      "name": "White-Label Domains & Routing"
+    },
+    {
+      "id": "9.33",
+      "name": "Out-of-Area & Network Access"
+    },
+    {
+      "id": "9.34",
+      "name": "External Integration Profiles"
+    },
+    {
+      "id": "9.35",
+      "name": "Substitution"
+    },
+    {
+      "id": "9.36",
+      "name": "Guest Web Booking"
+    },
+    {
+      "id": "9.37",
+      "name": "Non-Booker Passenger"
+    },
+    {
+      "id": "9.38",
+      "name": "Post-Acceptance Changes, Cancellation & Rescheduling"
+    },
+    {
+      "id": "9.39",
+      "name": "Mapping, Routing & Geospatial (Mapbox)"
+    },
+    {
+      "id": "9.40",
+      "name": "Origination & Attribution"
+    },
+    {
+      "id": "9.41",
+      "name": "Messaging, Numbers & Failover"
+    },
+    {
+      "id": "9.42",
+      "name": "Language & Localization"
+    },
+    {
+      "id": "9.43",
+      "name": "Lost & Found and Task Queues"
+    },
+    {
+      "id": "9.44",
+      "name": "Alternative Service Lines"
+    },
+    {
+      "id": "9.45",
+      "name": "Third-Party Connections"
+    },
+    {
+      "id": "9.46",
+      "name": "Product Usage Analytics"
+    },
+    {
+      "id": "9.47",
+      "name": "Capability Switches"
+    },
+    {
+      "id": "9.48",
+      "name": "Learning & Onboarding"
+    },
+    {
+      "id": "9.49",
+      "name": "Saved Places"
+    },
+    {
+      "id": "9.51",
+      "name": "Dead Ride Optimization"
+    },
+    {
+      "id": "9.52",
+      "name": "Disallow Lists"
+    },
+    {
+      "id": "9.53",
+      "name": "Partner Parity & Dead Miles"
+    },
+    {
+      "id": "9.54",
+      "name": "Editions & Capability Subtraction"
+    },
+    {
+      "id": "9.55",
+      "name": "Prototype Modes & Walkthrough"
+    },
+    {
+      "id": "9.56",
+      "name": "Addresses & Location"
+    },
+    {
+      "id": "9.57",
+      "name": "Autoreplies & Approvals"
+    },
+    {
+      "id": "9.58",
+      "name": "Exclusive to My Brand"
+    },
+    {
+      "id": "9.59",
+      "name": "Network Exchange"
+    },
+    {
+      "id": "9.60",
+      "name": "Exchange Rates & Conversion"
+    },
+    {
+      "id": "9.61",
+      "name": "Answering a Request by Text"
+    },
+    {
+      "id": "9.62",
+      "name": "The Reply Grammar in Five Languages"
+    },
+    {
+      "id": "9.63",
+      "name": "Vehicle Damage, Soiling & Cleaning Recovery"
+    },
+    {
+      "id": "9.64",
+      "name": "Incidents, Insurance & Claims"
+    },
+    {
+      "id": "9.67",
+      "name": "Editions & Capability Subtraction"
+    },
+    {
+      "id": "9.68",
+      "name": "Presentation Modes & Guided Walkthroughs"
+    },
+    {
+      "id": "9.69",
+      "name": "UI Invariants (Non-Functional)"
+    },
+    {
+      "id": "9.70",
+      "name": "Membership, Rewards & Rider Growth"
+    },
+    {
+      "id": "9.71",
+      "name": "White-Label Websites"
+    },
+    {
+      "id": "9.72",
+      "name": "The Booking Embed"
+    },
+    {
+      "id": "9.73",
+      "name": "Links, Redirects & Deep Linking"
+    },
+    {
+      "id": "9.74",
+      "name": "Sessions & the App-Portal Handoff"
+    },
+    {
+      "id": "9.75",
+      "name": "Voice: a Number that Answers"
+    },
+    {
+      "id": "9.76",
+      "name": "Hosting, Domains & DNS"
+    },
+    {
+      "id": "9.77",
+      "name": "Markets"
+    },
+    {
+      "id": "9.78",
+      "name": "Shared Rate Sheets"
+    },
+    {
+      "id": "9.79",
+      "name": "Arrival, and the Surfaces People Land On"
+    },
+    {
+      "id": "9.80",
+      "name": "Demo Accounts and the Synthetic Day"
+    }
+  ]
+}

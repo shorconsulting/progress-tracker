@@ -1,0 +1,80 @@
+{
+  "$schema": "progress-tracker repos config v1",
+  "_comment": "Copied to ~/.claude/progress-tracker/repos.json on first run. Toggle a repo with /progress-repos enable|disable <owner/repo>. moduleSource is 'labels' (a label names the module) or 'epics' (issues labelled epic are the modules; children are linked by #refs in either body). A repo whose 'modules' probes file has no code paths reports issue and PR progress only. 'localPath' names a checkout to use when the report runs on that machine (ignored elsewhere).",
+  "repos": [
+    {
+      "repo": "homeporthealth/app",
+      "enabled": true,
+      "title": "Homeport Health platform",
+      "modules": "homeporthealth-app",
+      "moduleSource": "labels",
+      "moduleLabelPattern": "^m(\\d{2})$",
+      "moduleIdFormat": "M{n:02d}",
+      "moduleMentionPattern": "\\bM(\\d{2})\\b",
+      "trackedIssueLabels": [
+        "agent:build"
+      ],
+      "excludeIssueLabels": [
+        "epic"
+      ]
+    },
+    {
+      "repo": "Velocity-Org/ranch-rides",
+      "enabled": true,
+      "title": "Ranch Rides",
+      "modules": "ranch-rides",
+      "moduleSource": "labels",
+      "moduleLabelPattern": "^module:9\\.(\\d+)$",
+      "moduleIdFormat": "9.{n}",
+      "moduleMentionPattern": "\\b(?:ESS-)?9\\.(\\d{1,2})\\b",
+      "trackedIssueLabels": [],
+      "excludeIssueLabels": [
+        "epic",
+        "decision",
+        "question",
+        "duplicate",
+        "invalid",
+        "wontfix"
+      ]
+    },
+    {
+      "repo": "Velocity-Org/tidyhaus",
+      "enabled": true,
+      "title": "TidyHaus",
+      "moduleSource": "epics",
+      "epicLabel": "epic",
+      "epicIdPattern": "^Epic ([A-Z])\\b",
+      "moduleIdFormat": "Epic {n}",
+      "moduleMentionPattern": "\\bEpic ([A-Z])\\b",
+      "trackedIssueLabels": [],
+      "excludeIssueLabels": [
+        "duplicate",
+        "invalid",
+        "wontfix",
+        "question"
+      ]
+    },
+    {
+      "repo": "Shor-Consulting-Inc/wyset",
+      "enabled": true,
+      "title": "Wyset",
+      "moduleSource": "epics",
+      "epicLabel": "epic",
+      "epicIdPattern": "^\\[E(\\d+)\\]",
+      "moduleIdFormat": "E{n:02d}",
+      "moduleMentionPattern": "\\[E(\\d{2})\\]",
+      "trackedIssueLabels": [
+        "story"
+      ],
+      "excludeIssueLabels": [
+        "duplicate",
+        "invalid",
+        "wontfix"
+      ],
+      "doneFromCommits": true,
+      "commitLookbackDays": 365,
+      "_note": "Work lands on main with 'Ref #NN' in the commit message and stories stay open, so a default-branch commit citing a story counts it done.",
+      "localPath": "~/claude/_Projects/Wyset/wyset"
+    }
+  ]
+}
