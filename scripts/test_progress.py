@@ -196,5 +196,36 @@ class ReposConfig(unittest.TestCase):
         self.assertEqual(progress.main(["repos", "add", "bad name"]), 2)
 
 
+class AssignModulesTest(unittest.TestCase):
+    def test_infers_from_text_pr_and_files_and_lists_the_rest(self):
+        lab = lambda *n: [{"name": x} for x in n]  # noqa: E731
+        mk = lambda n, l, title="": {"number": n, "title": title or f"T{n}", "body": "", "state": "open", "labels": lab(*l),  # noqa: E731
+                                     "created_at": "2026-09-01T00:00:00Z", "closed_at": None, "updated_at": "2026-10-10T00:00:00Z"}
+        issues = [mk(1, ["m01", "story"]), mk(2, ["m02", "story"]), mk(3, ["story"], "Adds M02 export"), mk(4, ["story"]),
+                  mk(5, ["story"]), mk(6, ["story"])]
+        pr = lambda n, t, l=(): {"number": n, "state": "closed", "merged_at": "2026-10-12T00:00:00Z", "title": t, "body": "", "labels": lab(*l)}  # noqa: E731
+        prs = [pr(20, "Ship #4", ["m01"]), pr(21, "Ship #5")]
+
+        class Fake:
+            gh = None
+            def get(self, path):
+                return [{"filename": "apps/api/src/billing/x.ts"}] if "/files" in path else {"default_branch": "main"}
+            def paginate(self, path, per_page=100):
+                return prs if "/pulls" in path else [] if "/commits" in path else lab("m01", "m02") if "/labels" in path else issues
+
+        entry = {"repo": "o/r", "moduleSource": "labels", "moduleLabelPattern": r"^m(\d{2})$", "moduleIdFormat": "M{n:02d}",
+                 "trackedIssueLabels": ["story"], "qaLabels": [], "doneLabels": []}
+        old = progress.load_probes
+        progress.load_probes = lambda name: {"modules": [{"id": "M01", "name": "Core", "backend": ["apps/api/src/core"]},
+                                                         {"id": "M02", "name": "Billing", "backend": ["apps/api/src/billing"]}], "paths": {}}
+        try:
+            r = progress.analyze_repo(entry, Fake(), NOW, False)
+        finally:
+            progress.load_probes = old
+        totals = {m["id"]: m["issues"]["total"] for m in r["modules"]}
+        self.assertEqual(totals, {"M00": 1, "M01": 2, "M02": 3})
+        self.assertTrue(any("#6" in w and "no module" in w for w in r["warnings"]))
+
+
 if __name__ == "__main__":
     unittest.main()

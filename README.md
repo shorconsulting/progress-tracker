@@ -72,6 +72,8 @@ The prompt runs the command unattended and ends with the artifact link.
   (wyset, where work lands on main with `Ref #NN` and stories stay open) a default-branch commit citing the
   issue counts too, within `commitLookbackDays`. `trackedIssueLabels` limits the base (`agent:build`, `story`);
   `excludeIssueLabels` drops epics, questions, duplicates and the like.
+  **Modules:** an issue with no module is placed from a mention in its title or body, then its merged PR(s), then the
+  files those PRs changed (`moduleLabelFormat` writes the label back on label-sourced repos); the rest are warned about.
   **Done = merged work AND marked done**, in every repository. Merged work: a merged PR that names the issue, or a
   commit on the default branch that cites it. Marked done: the issue is closed or carries `done`. An issue with merged
   work and `qa-passed` earns `done`, which a report run applies itself after creating any missing status label

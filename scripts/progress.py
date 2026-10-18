@@ -16,6 +16,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import collections
 import datetime as dt
 import html
 import json
@@ -605,6 +606,59 @@ def label_applied_at(gh: GitHub, full: str, issue: dict, names: set[str]) -> dt.
     return max((x for x in stamps if x), default=None) or parse_ts(issue.get("updated_at"))
 
 
+def _plurality(votes: list[str]) -> str | None:
+    """The single most common value, or None on an empty list or a tie."""
+    if not votes:
+        return None
+    top = collections.Counter(votes).most_common(2)
+    return top[0][0] if len(top) == 1 or top[0][1] > top[1][1] else None
+
+
+def assign_modules(entry: dict, gh: GitHub, full: str, issues: list[dict], resolver: "ModuleResolver",
+                   prs_for: dict[int, list[dict]], domain_to_module: dict[str, str],
+                   module_names: dict[str, str], warnings: list[str]) -> None:
+    """Give every tracked issue without a module one, inferred in this order: a module mention in its title or body;
+    the module of the merged pull request(s) that name it; the module that owns the files those pull requests changed.
+    A label-sourced repository with `moduleLabelFormat` (for example `m{n:02d}`) also gets the label written on the
+    issue; an epic-sourced one keeps the inferred module for the report only. What cannot be inferred is listed."""
+    module_ids = set(module_names) | {m for v in resolver.by_issue.values() for m in v}
+    by_number = {i["number"]: i for i in issues}
+    todo = sorted(n for n, it in by_number.items() if resolver.is_tracked(it) and not resolver.by_issue.get(n))
+    fmt = entry.get("moduleLabelFormat")
+    writing = bool(fmt) and resolver.source == "labels" and WRITE_LABELS and entry.get("manageLabels", True)
+    assigned: dict[int, str] = {}
+    for n in todo:
+        it = by_number[n]
+        text_mods = [m for m in resolver.from_text((it.get("title") or "") + "\n" + (it.get("body") or "")) if m in module_ids]
+        mid = text_mods[0] if len(text_mods) == 1 else None
+        if mid is None:
+            mid = _plurality([m for p in prs_for.get(n, []) for m in attribute_pr(p, resolver, domain_to_module) if m in module_ids])
+        if mid is None and domain_to_module:
+            votes = []
+            for p in prs_for.get(n, [])[:3]:
+                try:
+                    files = gh.get(f"repos/{full}/pulls/{p['number']}/files?per_page=100")
+                except RuntimeError:
+                    continue
+                for f in files if isinstance(files, list) else []:
+                    votes += [domain_to_module[seg] for seg in f.get("filename", "").split("/") if seg in domain_to_module]
+            mid = _plurality(votes)
+        if mid is None:
+            continue
+        resolver.by_issue[n] = [mid]
+        assigned[n] = mid
+        if writing:
+            digits = re.search(r"(\d+)$", mid)
+            if digits:
+                apply_label(gh, full, it, fmt.format(n=int(digits.group(1))), warnings)
+    if assigned:
+        log(f"{full}: assigned a module to {len(assigned)} issue(s)" + (" and labelled them" if writing else " (report only)"))
+    left = [n for n in todo if n not in assigned]
+    if left:
+        warnings.append(f"{len(left)} tracked issue(s) have no module and none could be inferred (counted under M00): "
+                        + ", ".join(f"#{n}" for n in left[:15]) + (" ..." if len(left) > 15 else ""))
+
+
 def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -> dict:
     full = entry["repo"]
     probes = load_probes(entry.get("modules"))
@@ -637,11 +691,13 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
     ref_rule = entry.get("issueRefRule") or "keyword"
     pr_merge: dict[int, dt.datetime] = {}
     unlinked = 0
+    prs_for: dict[int, list[dict]] = {}
     for p in merged:
         t = parse_ts(p["merged_at"])
         refs = [n for n in issue_refs(p.get("title") or "", p.get("body") or "", ref_rule) if n in resolver.by_issue]
         unlinked += not refs
         for n in refs:
+            prs_for.setdefault(n, []).append(p)
             if t is not None and (n not in pr_merge or t < pr_merge[n]):
                 pr_merge[n] = t
     merged_for: dict[int, dt.datetime] = {}
@@ -695,6 +751,8 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
                         + ", ".join(f"#{n}" for n in stuck[:15]) + (" ..." if len(stuck) > 15 else ""))
     if unlinked:
         warnings.append(f"{unlinked} merged PR(s) name no tracked issue (put 'Story #N' in the title or body so merges can be matched)")
+
+    assign_modules(entry, gh, full, issues, resolver, prs_for, domain_to_module, module_names, warnings)
 
     points = {"now": now, "day": now - DAY, "week": now - WEEK, "two_weeks": now - 2 * WEEK}
     counts = {k: issue_counts(issues, t, resolver, merged_for, strict=True) for k, t in points.items()}
