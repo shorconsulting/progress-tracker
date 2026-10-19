@@ -273,5 +273,19 @@ class PathRulesTest(unittest.TestCase):
         self.assertEqual(r.for_text("Production organize flow"), "M01")
 
 
+class InferLinksTest(unittest.TestCase):
+    def test_links_by_leading_requirement_id_then_by_topic_and_never_to_an_epic(self):
+        issue = lambda n, title, body="", labels=(): {"number": n, "title": title, "body": body, "labels": [{"name": x} for x in labels]}  # noqa: E731
+        issues = [issue(1, "TH-230 — Production organize: folder picker"), issue(2, "Cloud sync of the journal across devices", "journal sync across devices over the cloud"),
+                  issue(3, "EPIC — Cloud sync", "journal sync cloud devices epic", ["epic"]), issue(4, "Billing page lists invoices", "invoices billing")]
+        pr = lambda n, title, body="": {"number": n, "title": title, "body": body}  # noqa: E731
+        links = progress.infer_pr_links([pr(10, "Folder picker", "implements TH-230 on mac"), pr(11, "The journal now syncs across devices through the cloud"),
+                                         pr(12, "Rename a variable")], issues)
+        self.assertEqual(links[10][0::2], (1, "id"))
+        self.assertEqual((links[11][0], links[11][2]), (2, "topic"))
+        self.assertNotIn(12, links)
+        self.assertNotEqual(links[11][0], 3)
+
+
 if __name__ == "__main__":
     unittest.main()

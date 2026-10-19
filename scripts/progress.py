@@ -615,6 +615,71 @@ def label_applied_at(gh: GitHub, full: str, issue: dict, names: set[str]) -> dt.
     return max((x for x in stamps if x), default=None) or parse_ts(issue.get("updated_at"))
 
 
+_STOP = set("""the and for with that this from into over when then than are was were will not but has have had its our out
+ all any can per via use used using new add adds added make makes made fix fixes fixed update updates build builds
+ test tests testing issue issues story pull request merge merged branch commit round lane wave phase part epic
+ page screen""".split())
+
+
+def _tokens(text: str) -> list[str]:
+    out = []
+    for w in re.findall(r"[a-z][a-z0-9]{2,}", (text or "").lower()):
+        if w in _STOP:
+            continue
+        if len(w) > 4 and w.endswith("s") and not w.endswith("ss"):
+            w = w[:-1]
+        out.append(w)
+    return out
+
+
+def infer_pr_links(prs: list[dict], issues: list[dict], min_score: float = 0.35, margin: float = 1.4) -> dict[int, tuple[int, float, str]]:
+    """Link pull requests that name no issue to the tracked issue they are about, by topic.
+
+    Epics (label `epic`) are never a target.
+    1. A requirement id that opens an issue's title (`TH-230 — ...`, `ESS-9.41.16 · ...`) and appears in the PR text is a certain
+       match. An id merely mentioned inside a title (`... (D-013)`) is a reference, not the requirement, and is ignored.
+    2. Otherwise cosine similarity over tf-idf of the PR's title/body against each issue's title/body; the best issue wins
+       when it scores at least `min_score` and beats the runner-up by `margin`. One issue per PR.
+    Returns {pr_number: (issue_number, score, "id" | "topic")}. Nothing here is written back to GitHub."""
+    import math
+    issues = [i for i in issues if "epic" not in {(l["name"] if isinstance(l, dict) else str(l)).lower() for l in i.get("labels", [])}
+              and not re.search(r"\bEPIC\b", i.get("title") or "")]
+    docs = {("i", i["number"]): _tokens((i.get("title") or "") + " " + (i.get("title") or "") + " " + (i.get("body") or "")[:1500]) for i in issues}
+    pdocs = {("p", p["number"]): _tokens((p.get("title") or "") + " " + (p.get("title") or "") + " " + (p.get("body") or "")[:2000]) for p in prs}
+    df: collections.Counter = collections.Counter()
+    for toks in list(docs.values()) + list(pdocs.values()):
+        df.update(set(toks))
+    n_docs = max(1, len(docs) + len(pdocs))
+    idf = {w: math.log((n_docs + 1) / (c + 1)) + 1 for w, c in df.items() if c <= 0.4 * n_docs}
+
+    def vec(toks: list[str]) -> dict[str, float]:
+        tf = collections.Counter(t for t in toks if t in idf)
+        v = {w: (1 + math.log(c)) * idf[w] for w, c in tf.items()}
+        norm = math.sqrt(sum(x * x for x in v.values())) or 1.0
+        return {w: x / norm for w, x in v.items()}
+
+    ivec = {k: vec(t) for k, t in docs.items()}
+    lead_re = re.compile(r"^\W*\[?([A-Z][A-Z0-9]{0,5}-\d+(?:\.\d+)*)")
+    by_id: dict[str, list[int]] = {}
+    for i in issues:
+        m = lead_re.match(i.get("title") or "")
+        if m:
+            by_id.setdefault(m.group(1), []).append(i["number"])
+    out: dict[int, tuple[int, float, str]] = {}
+    for p in prs:
+        text = (p.get("title") or "") + "\n" + (p.get("body") or "")
+        hits = sorted({n for token, nums in by_id.items() if len(nums) == 1
+                       and re.search(r"(?<![A-Za-z0-9.-])" + re.escape(token) + r"(?![A-Za-z0-9-]|\.\d)", text) for n in nums})
+        if hits:
+            out[p["number"]] = (hits[0], 1.0, "id")
+            continue
+        pv = vec(pdocs[("p", p["number"])])
+        scored = sorted(((sum(w * iv.get(t, 0.0) for t, w in pv.items()), k[1]) for k, iv in ivec.items()), reverse=True)
+        if scored and scored[0][0] >= min_score and (len(scored) < 2 or scored[0][0] >= margin * scored[1][0]):
+            out[p["number"]] = (scored[0][1], round(scored[0][0], 3), "topic")
+    return out
+
+
 class PathRules:
     """Module placement from a probes file whose modules carry `match` globs (repo-relative paths) and `keywords`.
 
@@ -759,6 +824,28 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
             for n in issue_refs(p.get("title") or "", p.get("body") or "", ref_rule):
                 if n in resolver.by_issue and t0 is not None and (n not in pr_start or t0 < pr_start[n]):
                     pr_start[n] = t0
+    inferred: list[dict] = []
+    if entry.get("inferPrLinks"):
+        tracked_issues = [i for i in issues if resolver.is_tracked(i)]
+        tracked_nums = {i["number"] for i in tracked_issues}
+        named = lambda p: [n for n in issue_refs(p.get("title") or "", p.get("body") or "", ref_rule) if n in tracked_nums]  # noqa: E731
+        unnamed = [p for p in prs if (p.get("merged_at") or p.get("state") == "open") and not named(p)]
+        for pn, (n, score, how) in infer_pr_links(unnamed, tracked_issues).items():
+            p = next(q for q in unnamed if q["number"] == pn)
+            inferred.append({"pr": pn, "pr_title": p.get("title"), "issue": n, "issue_title": next(i for i in issues if i["number"] == n).get("title"),
+                             "score": score, "how": how, "merged": bool(p.get("merged_at"))})
+            prs_for.setdefault(n, []).append(p)
+            if p.get("merged_at"):
+                t = parse_ts(p["merged_at"])
+                if t is not None and (n not in pr_merge or t < pr_merge[n]):
+                    pr_merge[n] = t
+                unlinked -= 1
+            t0 = parse_ts(p.get("created_at"))
+            if t0 is not None and (n not in pr_start or t0 < pr_start[n]):
+                pr_start[n] = t0
+        if inferred:
+            warnings.append(f"{len(inferred)} PR(s) were linked to an issue by topic, not by name (inferred; see inferred-links.csv): "
+                            f"{sum(1 for x in inferred if x['how'] == 'id')} by requirement id, {sum(1 for x in inferred if x['how'] == 'topic')} by wording")
     merged_for: dict[int, dt.datetime] = {}
     merged_commit: dict[int, dt.datetime] = {}
 
@@ -919,7 +1006,8 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
         "issues_per_pr_week": None if not m_week else round(closed_week / m_week, 2),
     }
     return {"repo": full, "title": entry.get("title") or full, "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "has_code_columns": tree is not None, "warnings": warnings, "summary": summary, "modules": rows}
+            "has_code_columns": tree is not None, "warnings": warnings, "summary": summary, "modules": rows,
+            "inferred_links": inferred}
 
 
 # ----------------------------------------------------------------------------- rendering
@@ -1102,6 +1190,14 @@ def cmd_report(args: argparse.Namespace) -> int:
     out = Path(args.out) if args.out else HOME / "out" / report["date"]
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    links = [(r["repo"], x) for r in results for x in r.get("inferred_links", [])]
+    if links:
+        import csv
+        with open(out / "inferred-links.csv", "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["repo", "pr", "pr_title", "issue", "issue_title", "how", "score", "merged"])
+            for repo, x in links:
+                w.writerow([repo, x["pr"], x["pr_title"], x["issue"], x["issue_title"], x["how"], x["score"], x["merged"]])
     (out / "report.html").write_text(render_html(report), encoding="utf-8")
     (out / "summary.md").write_text(render_markdown(report), encoding="utf-8")
     latest = HOME / "out" / "latest"

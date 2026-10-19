@@ -42,6 +42,10 @@ With no arguments, run `repos list`. Report the command's output as is. Each ent
   owns most of the files it changes (the longest literal glob wins a file); an issue goes to the module of the PR that names
   it, else the module whose keywords or screen names its title and body mention most. Point a repo at it with `modules`
   and give `moduleSource: "labels"` with a pattern nothing matches, so the code decides (see `config/modules/tidyhaus.json`).
+- `inferPrLinks` (default false): link merged and open PRs that name no issue to the tracked issue they are about, by a
+  requirement id that opens the issue's title (`TH-230 — ...`) found in the PR text, else by wording (tf-idf similarity with
+  a margin over the runner-up). Epics are never a target. Nothing is written to GitHub; the links are counted in the report
+  and listed in `inferred-links.csv` beside it for review.
 - `moduleLabelFormat` (for example `m{n:02d}`, `module:9.{n}`): turns a module id into its label. Every report run gives
   each tracked issue that has no module one, inferred from a module mention in its title or body, then from the module of
   the merged PR(s) naming it, then from the module owning the files those PRs changed. With this setting a label-sourced

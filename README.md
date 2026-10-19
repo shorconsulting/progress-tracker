@@ -72,6 +72,7 @@ The prompt runs the command unattended and ends with the artifact link.
   (wyset, where work lands on main with `Ref #NN` and stories stay open) a default-branch commit citing the
   issue counts too, within `commitLookbackDays`. `trackedIssueLabels` limits the base (`agent:build`, `story`);
   `excludeIssueLabels` drops epics, questions, duplicates and the like.
+  **Inferred links:** `inferPrLinks: true` ties PRs that name no issue to the issue they are about (requirement id, else wording) and lists them in `inferred-links.csv`; nothing is written to GitHub.
   **Modules from code:** a probes file with `match` globs and `keywords` places PRs by the files they change and issues by
   their PR or their words (`config/modules/tidyhaus.json`).
   **% started** (the meter) = requirements with a PR opened or merged that names them / all tracked requirements; **% done**
