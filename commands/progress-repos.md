@@ -37,6 +37,11 @@ With no arguments, run `repos list`. Report the command's output as is. Each ent
   count; the report warns about merged work that is not marked.
 - Status labels: `qa-passed` (QA signed off, ready to merge) and `done` (passed QA and merged). An issue with merged work
   and `qa-passed` earns `done`, which the report run applies itself. `qaLabels` / `doneLabels` rename them, or `[]` opts out.
+- Modules from the code's own structure: a probes file whose modules carry `match` (repo-relative globs such as
+  `app/ui/src/screens/pff-*`, `backend/src/modules/billing/*`) and `keywords`. A merged or open PR goes to the module that
+  owns most of the files it changes (the longest literal glob wins a file); an issue goes to the module of the PR that names
+  it, else the module whose keywords or screen names its title and body mention most. Point a repo at it with `modules`
+  and give `moduleSource: "labels"` with a pattern nothing matches, so the code decides (see `config/modules/tidyhaus.json`).
 - `moduleLabelFormat` (for example `m{n:02d}`, `module:9.{n}`): turns a module id into its label. Every report run gives
   each tracked issue that has no module one, inferred from a module mention in its title or body, then from the module of
   the merged PR(s) naming it, then from the module owning the files those PRs changed. With this setting a label-sourced

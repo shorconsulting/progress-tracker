@@ -227,5 +227,51 @@ class AssignModulesTest(unittest.TestCase):
         self.assertTrue(any("#6" in w and "no module" in w for w in r["warnings"]))
 
 
+class DoneDateTest(unittest.TestCase):
+    def test_a_late_done_label_does_not_make_old_work_finish_today(self):
+        lab = lambda *n: [{"name": x} for x in n]  # noqa: E731
+        issue = lambda n, l: {"number": n, "title": f"T{n}", "body": "", "state": "open", "labels": lab(*l),  # noqa: E731
+                              "created_at": "2026-09-01T00:00:00Z", "closed_at": None, "updated_at": "2026-10-18T00:00:00Z"}
+        epic = issue(1, ["epic"]); epic["title"] = "[E01] Core"; epic["body"] = "#2"
+        issues = [epic, issue(2, ["story", "done"])]
+        prs = [{"number": 9, "state": "closed", "merged_at": "2026-10-01T00:00:00Z", "created_at": "2026-09-30T00:00:00Z",
+                "title": "Story #2", "body": "", "labels": []}]
+
+        class Fake:
+            gh = None
+            def get(self, path):
+                return {"default_branch": "main"}
+            def paginate(self, path, per_page=100):
+                if path.endswith("/events"):  # the label went on long after the merge
+                    return [{"event": "labeled", "created_at": "2026-10-18T00:00:00Z", "label": {"name": "done"}}]
+                return prs if "/pulls" in path else [] if "/commits" in path else lab("done") if "/labels" in path else issues
+
+        entry = {"repo": "o/r", "moduleSource": "epics", "epicLabel": "epic", "epicIdPattern": r"^\[E(\d+)\]",
+                 "moduleIdFormat": "E{n:02d}", "trackedIssueLabels": ["story"], "manageLabels": False}
+        r = progress.analyze_repo(entry, Fake(), NOW, False)
+        self.assertEqual(r["summary"]["issues_done"], 1)
+        self.assertEqual(r["summary"]["delta_week"], 0.0)  # done a fortnight ago on the merge date, not this week
+
+
+class PathRulesTest(unittest.TestCase):
+    PROBES = {"modules": [
+        {"id": "M01", "name": "Files", "match": ["app/core/src/organize/*", "app/ui/src/screens/pff-*"], "keywords": ["organize"]},
+        {"id": "M02", "name": "Buying", "match": ["app/ui/src/screens/gift-*", "backend/src/modules/commerce/*", "backend/*"], "keywords": ["checkout"]}]}
+
+    def test_longest_literal_glob_wins_and_a_pr_goes_where_most_files_are(self):
+        r = progress.PathRules(self.PROBES)
+        self.assertEqual(r.for_path("backend/src/modules/commerce/x.ts"), "M02")
+        self.assertEqual(r.for_path("app/ui/src/screens/pff-results/a.tsx"), "M01")
+        self.assertIsNone(r.for_path("docs/readme.md"))
+        self.assertEqual(r.for_files(["app/core/src/organize/a.ts", "app/core/src/organize/b.ts", "backend/x.ts"]), "M01")
+        self.assertIsNone(r.for_files(["app/core/src/organize/a.ts", "backend/x.ts"]))  # a tie places nothing
+
+    def test_screen_names_and_keywords_place_an_issue_by_its_text(self):
+        r = progress.PathRules(self.PROBES)
+        self.assertEqual(r.for_text("gift-redeem: redemption fills the cart"), "M02")
+        self.assertEqual(r.for_text("Wire the checkout to organize"), None)  # one keyword each: no winner
+        self.assertEqual(r.for_text("Production organize flow"), "M01")
+
+
 if __name__ == "__main__":
     unittest.main()

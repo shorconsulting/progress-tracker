@@ -1,0 +1,138 @@
+{
+  "$schema": "progress-tracker module probes v1",
+  "_comment": "TidyHaus modules, from the app's own structure: screen families in app/ui/src/screens (cloud-*, pml-*, pph-*, corp-*, admin-*, web-*), feature folders in app/ui/src/features, engines in app/core/src, backend/src/modules and routes. A module's `match` globs claim files (the longest literal match wins), so a pull request lands in the module that owns most of the files it changes; `keywords` also place an issue by its title or body. Screen names under /screens/ are keywords automatically.",
+  "code": false,
+  "modules": [
+    {
+      "id": "M01",
+      "name": "Entry, sign-up and first run",
+      "match": ["app/ui/src/screens/create-account*", "app/ui/src/screens/welcome-aboard*", "app/ui/src/screens/tour*", "app/ui/src/screens/own-words*",
+                "app/ui/src/screens/wants-needs*", "app/ui/src/screens/pain-point*", "app/ui/src/screens/lets-get-organized*", "app/ui/src/screens/get-organized-*",
+                "app/ui/src/screens/new-project*", "app/ui/src/screens/new-context*", "app/ui/src/screens/intake-tasks*", "app/ui/src/screens/resume*",
+                "app/ui/src/screens/sample-proof*", "app/ui/src/screens/profession*", "app/ui/src/screens/expectations*", "app/ui/src/screens/connect-step*",
+                "app/ui/src/features/entry/*", "app/ui/src/features/intake/*", "app/ui/src/features/doors/*", "app/ui/src/features/persona/*",
+                "app/ui/src/features/tour/*", "app/ui/src/features/resume/*", "app/ui/src/features/trial-save/*", "app/ui/src/features/onboarding/*",
+                "app/ui/src/features/proof/*", "backend/src/modules/trialSave/*", "app/core/src/persona/*", "app/core/src/ab-router/*"],
+      "keywords": ["onboarding", "first run", "trial", "intake", "sign-up", "signup", "welcome", "demo folder"]
+    },
+    {
+      "id": "M02",
+      "name": "Files and folders",
+      "match": ["app/ui/src/screens/pff-*", "app/ui/src/screens/kff-*", "app/ui/src/screens/prod-scan*", "app/ui/src/screens/scan*", "app/ui/src/screens/scope*",
+                "app/ui/src/screens/nd-*", "app/ui/src/screens/execute*", "app/ui/src/screens/review", "app/ui/src/screens/review/*", "app/ui/src/screens/run-detail*",
+                "app/ui/src/screens/naming-*", "app/ui/src/screens/duplicate-rules*", "app/ui/src/screens/history*", "app/ui/src/screens/stale-files*",
+                "app/ui/src/screens/version-sprawl*", "app/ui/src/screens/find-a-file*", "app/ui/src/screens/importance*", "app/ui/src/screens/make-it-yours*",
+                "app/ui/src/screens/moment-of-truth*", "app/ui/src/screens/unfinished-work*", "app/ui/src/screens/mirror*", "app/ui/src/screens/umod*",
+                "app/ui/src/screens/err-*", "app/ui/src/screens/blockers*", "app/ui/src/screens/complete*", "app/ui/src/screens/confirm*",
+                "app/ui/src/features/files/*", "app/ui/src/features/production/*", "app/ui/src/features/local/*", "app/ui/src/features/held/*",
+                "app/ui/src/features/reads/*", "app/ui/src/features/naming/*", "app/ui/src/features/paid-files/*",
+                "app/core/src/organize/*", "app/core/src/deduplicate/*", "app/core/src/consolidate/*", "app/core/src/scanner/*", "app/core/src/classifier/*",
+                "app/core/src/folder-taxonomy/*", "app/core/src/file-naming/*", "app/core/src/fs/*", "app/core/src/journal/*", "app/core/src/versions/*",
+                "app/core/src/detect/*", "app/core/src/demo/*", "app/core/src/parking-lot/*", "app/core/src/run/*", "app/core/src/score/*"],
+      "keywords": ["organize", "folder", "duplicate", "dedupe", "undo", "journal", "magic undo", "taxonomy", "rename", "naming", "scan"]
+    },
+    {
+      "id": "M03",
+      "name": "Photos",
+      "match": ["app/ui/src/screens/photo-*", "app/ui/src/screens/pph-*", "app/ui/src/features/photos/*", "app/ui/src/features/paid-photos/*"],
+      "keywords": ["photo", "burst", "loupe", "camera roll"]
+    },
+    {
+      "id": "M04",
+      "name": "Email",
+      "match": ["app/ui/src/screens/email-*", "app/ui/src/screens/pml-*", "app/ui/src/screens/mail-*", "app/ui/src/features/email/*", "app/ui/src/features/paid-email/*",
+                "app/ui/src/features/mail/*", "app/ui/src/features/branches/*", "app/ui/src/features/marks/*", "backend/src/modules/email/*", "backend/src/modules/mailbox/*",
+                "backend/src/routes/*email*", "app/core/src/email/*"],
+      "keywords": ["email", "e-mail", "mailbox", "inbox", "gmail", "outlook", "mjml", "grapesjs", "attachment"]
+    },
+    {
+      "id": "M05",
+      "name": "Cloud storage and backup",
+      "match": ["app/ui/src/screens/cloud*", "app/ui/src/screens/pcl-*", "app/ui/src/screens/backup-*", "app/ui/src/screens/connections*",
+                "app/ui/src/features/cloud/*", "app/ui/src/features/paid-cloud/*", "app/ui/src/features/backup-coverage/*", "app/ui/src/features/settings-backup/*",
+                "app/core/src/cloud-provider/*", "app/core/src/sync-engine/*", "app/core/src/backup-coverage/*", "backend/src/modules/cloud/*",
+                "backend/src/modules/storage/*", "backend/src/routes/*storage*", "backend/src/routes/*cloud*"],
+      "keywords": ["cloud", "google drive", "dropbox", "onedrive", "icloud", "oauth", "backup", "sync", "rest client"]
+    },
+    {
+      "id": "M06",
+      "name": "Keep, search and the dashboard",
+      "match": ["app/ui/src/screens/keep-*", "app/ui/src/screens/stay-organized*", "app/ui/src/screens/watchtower*", "app/ui/src/screens/search-*",
+                "app/ui/src/screens/dashboard*", "app/ui/src/screens/activity*", "app/ui/src/screens/notouch-check*", "app/ui/src/screens/tray*",
+                "app/ui/src/features/keep/*", "app/ui/src/features/surfaces/*"],
+      "keywords": ["keep mode", "search", "dashboard", "watchtower", "hotkey", "stay organized"]
+    },
+    {
+      "id": "M07",
+      "name": "Overflow and drives",
+      "match": ["app/ui/src/screens/overflow-*", "app/ui/src/screens/drives*", "app/ui/src/screens/optimize-storage*", "app/ui/src/screens/network-drives*",
+                "app/ui/src/screens/storage-offer*", "app/ui/src/features/overflow/*", "app/core/src/overflow/*"],
+      "keywords": ["overflow", "offline", "dehydrate", "external drive", "storage offer", "1 tb", "2 tb"]
+    },
+    {
+      "id": "M08",
+      "name": "Buying, billing and gifts",
+      "match": ["app/ui/src/screens/a-la-carte*", "app/ui/src/screens/add-ons*", "app/ui/src/screens/checkout*", "app/ui/src/screens/pay-*", "app/ui/src/screens/card-expiring*",
+                "app/ui/src/screens/billing*", "app/ui/src/screens/subscription-ended*", "app/ui/src/screens/gift-*", "app/ui/src/screens/refer*", "app/ui/src/screens/conversion*",
+                "app/ui/src/screens/corp-cart*", "app/ui/src/features/commerce/*", "app/ui/src/features/billing/*", "app/ui/src/features/payments/*", "app/ui/src/features/pricing/*",
+                "app/ui/src/features/gifts/*", "app/ui/src/features/licensing/*", "app/ui/src/features/referrals/*", "app/core/src/licensing/*",
+                "backend/src/modules/commerce/*", "backend/src/modules/catalog/*", "backend/src/modules/payments/*", "backend/src/modules/paypal/*", "backend/src/modules/stripe/*",
+                "backend/src/modules/codes/*", "backend/src/modules/entitlements/*", "backend/src/modules/licence/*", "backend/src/modules/referrals/*",
+                "backend/src/routes/*purchase*", "backend/src/routes/*checkout*", "backend/src/routes/*payment*", "backend/src/routes/*gift*", "backend/src/routes/*redemption*",
+                "backend/src/routes/*webhook*", "backend/src/routes/*referral*"],
+      "keywords": ["billing", "checkout", "stripe", "paypal", "licence", "license", "subscription", "gift", "pricing", "price", "coupon", "refund", "entitlement"]
+    },
+    {
+      "id": "M09",
+      "name": "Coaching, learning and human help",
+      "match": ["app/ui/src/screens/goals*", "app/ui/src/screens/set-the-pace*", "app/ui/src/screens/my-rhythm*", "app/ui/src/screens/learn-*", "app/ui/src/screens/coaching*",
+                "app/ui/src/screens/preemptive-coach*", "app/ui/src/screens/progress-checkin*", "app/ui/src/screens/weekly-review*", "app/ui/src/screens/diary*",
+                "app/ui/src/screens/satisfaction*", "app/ui/src/screens/escalation*", "app/ui/src/screens/agent*", "app/ui/src/screens/book-human*", "app/ui/src/screens/choose-help*",
+                "app/ui/src/screens/human-help*", "app/ui/src/screens/ask-for-help*", "app/ui/src/screens/teach-mode*", "app/ui/src/screens/leaderboard*",
+                "app/ui/src/features/learning/*", "app/ui/src/features/gamification/*", "app/ui/src/features/human/*", "app/ui/src/features/help/*",
+                "app/ui/src/features/ongoing-a/*", "app/ui/src/features/ongoing-b/*", "app/core/src/learning/*", "app/core/src/gamification/*",
+                "backend/src/modules/booking/*", "backend/src/routes/*booking*", "backend/src/routes/*consultant*"],
+      "keywords": ["human help", "organizer", "coaching", "learn", "goal", "pace", "rhythm", "diary", "booking", "book a"]
+    },
+    {
+      "id": "M10",
+      "name": "Family, ShareHaus and SafeHaus",
+      "match": ["app/ui/src/screens/family-users*", "app/ui/src/screens/sharehaus*", "app/ui/src/screens/safehaus-*", "app/ui/src/screens/seat-revoked*",
+                "app/ui/src/screens/web-family-join*", "app/ui/src/features/family/*", "app/ui/src/features/sharehaus/*", "app/ui/src/features/accounts/*",
+                "backend/src/modules/family/*", "backend/src/modules/sharehaus/*", "backend/src/routes/*share*", "backend/src/routes/*family*", "backend/src/routes/*seat*"],
+      "keywords": ["sharehaus", "safehaus", "family", "seat", "share"]
+    },
+    {
+      "id": "M11",
+      "name": "Companies and the portal",
+      "match": ["app/ui/src/screens/corp-*", "app/ui/src/screens/portal-*", "app/ui/src/screens/add-business*", "app/ui/src/screens/manage-in-portal*",
+                "app/ui/src/features/company/*", "app/ui/src/features/portal/*", "app/ui/src/features/industry-requests/*", "app/ui/src/features/tasks/*",
+                "backend/src/modules/company/*", "backend/src/modules/industryRequests/*", "backend/src/routes/*company*", "backend/src/routes/*portal*",
+                "app/core/src/crm/*"],
+      "keywords": ["company", "corp", "portal", "crm", "industry", "business", "staff role", "tenant"]
+    },
+    {
+      "id": "M12",
+      "name": "Staff console",
+      "match": ["app/ui/src/screens/admin-*", "app/ui/src/features/admin-a/*", "app/ui/src/features/admin-b/*", "app/ui/src/features/admin-c/*",
+                "app/ui/src/features/agreements/*", "app/ui/src/features/news/*", "app/ui/src/features/feedback/*", "backend/src/modules/news/*",
+                "backend/src/modules/feedback/*", "backend/src/routes/*staff*"],
+      "keywords": ["admin", "staff", "super admin", "console", "dossier", "agreement", "news", "feedback"]
+    },
+    {
+      "id": "M13",
+      "name": "Website and accounts",
+      "match": ["app/ui/src/screens/web-*", "app/ui/src/screens/settings*", "app/ui/src/screens/pairing*", "app/ui/src/screens/pair-activate*", "app/ui/src/screens/app-update*",
+                "app/ui/src/screens/notify-setup*", "app/ui/src/screens/privacy-detail*", "app/ui/src/screens/ai-fallback*", "app/ui/src/screens/learn-more*",
+                "backend/src/modules/identity/*", "backend/src/modules/devices/*", "backend/src/routes/*auth*", "backend/src/routes/*device*"],
+      "keywords": ["website", "sign in", "sign-in", "login", "password", "session", "account", "pairing", "pair", "settings"]
+    },
+    {
+      "id": "M14",
+      "name": "Platform, desktop app and release",
+      "match": ["app/src-tauri/*", "app/RELEASE.md", "release/*", ".github/*", "scripts/*", "server/*", "backend/db/*", "backend/src/modules/telemetry/*", "backend/src/routes/*telemetry*",
+                "app/core/src/ai/*", "app/core/src/index.ts", "app/core/src/smoke/*", "app/e2e/*", "app/package.json", "backend/package.json", "poc/*", "spikes/*"],
+      "keywords": ["dmg", "msi", "installer", "signing", "notariz", "release", "ci ", "workflow", "secret", "hetzner", "postgres", "deploy", "server", "indexer", "tauri", "keychain", "sqlcipher", "on-device ai", "phi silica"]
+    }
+  ]
+}

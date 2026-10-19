@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import collections
 import datetime as dt
+import fnmatch
 import html
 import json
 import os
@@ -614,6 +615,44 @@ def label_applied_at(gh: GitHub, full: str, issue: dict, names: set[str]) -> dt.
     return max((x for x in stamps if x), default=None) or parse_ts(issue.get("updated_at"))
 
 
+class PathRules:
+    """Module placement from a probes file whose modules carry `match` globs (repo-relative paths) and `keywords`.
+
+    A path belongs to the module whose matching glob has the longest literal part. Screen names under `/screens/`
+    become keywords on their own, so an issue called "gift-redeem: ..." lands where the gift-redeem screen lives."""
+
+    def __init__(self, probes: dict) -> None:
+        self.rules: list[tuple[int, str, str]] = []
+        self.keywords: dict[str, set[str]] = {}
+        for m in probes.get("modules", []):
+            kws = {k.lower() for k in m.get("keywords", [])}
+            for g in m.get("match", []):
+                self.rules.append((len(g.replace("*", "")), g, m["id"]))
+                if "/screens/" in g:
+                    token = g.rsplit("/screens/", 1)[1].rstrip("*").rstrip("/")
+                    if len(token) >= 5:
+                        kws.add(token.lower())
+            self.keywords[m["id"]] = kws
+        self.rules.sort(key=lambda r: -r[0])
+
+    def __bool__(self) -> bool:
+        return bool(self.rules)
+
+    def for_path(self, path: str) -> str | None:
+        for _, glob, mid in self.rules:
+            if fnmatch.fnmatchcase(path, glob):
+                return mid
+        return None
+
+    def for_files(self, paths: list[str]) -> str | None:
+        return _plurality([m for m in (self.for_path(f) for f in paths) if m])
+
+    def for_text(self, text: str) -> str | None:
+        text = text.lower()
+        scores = {mid: sum(1 for k in kws if k in text) for mid, kws in self.keywords.items()}
+        return _plurality([mid for mid, n in scores.items() for _ in range(n)])
+
+
 def _plurality(votes: list[str]) -> str | None:
     """The single most common value, or None on an empty list or a tie."""
     if not votes:
@@ -624,7 +663,8 @@ def _plurality(votes: list[str]) -> str | None:
 
 def assign_modules(entry: dict, gh: GitHub, full: str, issues: list[dict], resolver: "ModuleResolver",
                    prs_for: dict[int, list[dict]], domain_to_module: dict[str, str],
-                   module_names: dict[str, str], warnings: list[str]) -> None:
+                   module_names: dict[str, str], warnings: list[str],
+                   pr_mods: dict[int, list[str]] | None = None, rules: "PathRules | None" = None) -> None:
     """Give every tracked issue without a module one, inferred in this order: a module mention in its title or body;
     the module of the merged pull request(s) that name it; the module that owns the files those pull requests changed.
     A label-sourced repository with `moduleLabelFormat` (for example `m{n:02d}`) also gets the label written on the
@@ -640,7 +680,11 @@ def assign_modules(entry: dict, gh: GitHub, full: str, issues: list[dict], resol
         text_mods = [m for m in resolver.from_text((it.get("title") or "") + "\n" + (it.get("body") or "")) if m in module_ids]
         mid = text_mods[0] if len(text_mods) == 1 else None
         if mid is None:
-            mid = _plurality([m for p in prs_for.get(n, []) for m in attribute_pr(p, resolver, domain_to_module) if m in module_ids])
+            mid = _plurality([m for p in prs_for.get(n, [])
+                              for m in (pr_mods[p["number"]] if pr_mods is not None and p["number"] in pr_mods
+                                        else attribute_pr(p, resolver, domain_to_module)) if m in module_ids])
+        if mid is None and rules:
+            mid = rules.for_text((it.get("title") or "") + "\n" + (it.get("body") or ""))
         if mid is None and domain_to_module:
             votes = []
             for p in prs_for.get(n, [])[:3]:
@@ -758,7 +802,9 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
             marked.append(label_applied_at(gh, full, it, done_labels) if n not in labelled else now)
         marked = [x for x in marked if x]
         if marked:
-            merged_for[n] = max(merged_work[n], min(marked))
+            # dated by the earlier of the merge and the mark: a label added late (a backfill, a CI rollout) must not
+            # make old work look like it finished today
+            merged_for[n] = min(merged_work[n], min(marked))
     if labelled:
         log(f"{full}: labelled done: " + ", ".join(f"#{n}" for n in labelled))
     stuck = sorted(n for n in merged_work if n in by_number and n not in merged_for and resolver.is_tracked(by_number[n]))
@@ -775,13 +821,26 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
         for n, t in merged_commit.items():
             if n not in started_for or t < started_for[n]:
                 started_for[n] = t
-    assign_modules(entry, gh, full, issues, resolver, prs_for, domain_to_module, module_names, warnings)
+    rules = PathRules(probes) if probes else None
+    pr_file_mod: dict[int, str] = {}
+    if rules:
+        for p in prs:
+            if p.get("state") == "open" or p.get("merged_at"):
+                try:
+                    files = gh.get(f"repos/{full}/pulls/{p['number']}/files?per_page=100")
+                except RuntimeError:
+                    continue
+                mid = rules.for_files([f.get("filename", "") for f in files]) if isinstance(files, list) else None
+                if mid:
+                    pr_file_mod[p["number"]] = mid
+    pr_mods = {p["number"]: attribute_pr(p, resolver, domain_to_module) or ([pr_file_mod[p["number"]]] if p["number"] in pr_file_mod else [])
+               for p in prs}
+    assign_modules(entry, gh, full, issues, resolver, prs_for, domain_to_module, module_names, warnings, pr_mods, rules)
 
     points = {"now": now, "day": now - DAY, "week": now - WEEK, "two_weeks": now - 2 * WEEK}
     counts = {k: issue_counts(issues, t, resolver, merged_for, strict=True, started_for=started_for) for k, t in points.items()}
 
     open_prs = [p for p in prs if p.get("state") == "open"]
-    pr_mods = {p["number"]: attribute_pr(p, resolver, domain_to_module) for p in prs}
 
     def merged_between(a: dt.datetime, b: dt.datetime, module: str | None = None) -> int:
         n = 0
