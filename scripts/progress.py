@@ -781,6 +781,9 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
             tree = Tree(checkout, default_branch(entry, gh, full))
 
     all_ids = set(counts["now"]) | set(module_names)
+    # merged pull requests no module claims are real work: give them a row rather than dropping them from the table
+    if any(not pr_mods[p["number"]] for p in merged):
+        all_ids.add(FOUNDATION)
     rows = []
     for mid in sorted(all_ids, key=sort_key):
         empty = {"total": 0, "closed": 0, "done": 0}
