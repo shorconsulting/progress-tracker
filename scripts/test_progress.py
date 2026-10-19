@@ -37,12 +37,12 @@ class IssueCounts(unittest.TestCase):
         merged_for = {2: NOW - dt.timedelta(hours=20)}
         res = progress.ModuleResolver({"trackedIssueLabels": ["agent:build"]}, issues, "o/r")
         now = progress.issue_counts(issues, NOW, res, merged_for)
-        self.assertEqual(now["M05"], {"total": 3, "closed": 1, "done": 2})
-        self.assertEqual(now[progress.FOUNDATION], {"total": 1, "closed": 0, "done": 0})
+        self.assertEqual(now["M05"], {"total": 3, "closed": 1, "done": 2, "started": 2})
+        self.assertEqual(now[progress.FOUNDATION], {"total": 1, "closed": 0, "done": 0, "started": 0})
         day = progress.issue_counts(issues, NOW - progress.DAY, res, merged_for)
-        self.assertEqual(day["M05"], {"total": 2, "closed": 1, "done": 1})  # issue 3 not yet filed, PR not yet merged
+        self.assertEqual(day["M05"], {"total": 2, "closed": 1, "done": 1, "started": 1})  # issue 3 not yet filed, PR not yet merged
         week = progress.issue_counts(issues, NOW - progress.WEEK, res, merged_for)
-        self.assertEqual(week["M05"], {"total": 2, "closed": 0, "done": 0})
+        self.assertEqual(week["M05"], {"total": 2, "closed": 0, "done": 0, "started": 0})
 
     def test_not_planned_and_duplicate_closures_leave_the_base(self):
         issues = [issue(1, ["m05"], NOW - dt.timedelta(days=5), closed=NOW - dt.timedelta(days=1)),
@@ -50,7 +50,7 @@ class IssueCounts(unittest.TestCase):
                   {**issue(3, ["m05"], NOW - dt.timedelta(days=5), closed=NOW - dt.timedelta(days=1)), "state_reason": "duplicate"},
                   {**issue(4, ["m05"], NOW - dt.timedelta(days=5), closed=NOW - dt.timedelta(days=1)), "state_reason": "completed"}]
         c = progress.issue_counts(issues, NOW, progress.ModuleResolver({}, issues, "o/r"))
-        self.assertEqual(c["M05"], {"total": 2, "closed": 2, "done": 2})
+        self.assertEqual(c["M05"], {"total": 2, "closed": 2, "done": 2, "started": 2})
 
     def test_multi_module_issue_counts_for_each(self):
         issues = [issue(1, ["m05", "m07"], NOW - dt.timedelta(days=1), closed=NOW - dt.timedelta(hours=1))]
@@ -149,10 +149,10 @@ class Formatting(unittest.TestCase):
         self.assertEqual(progress.fmt_delta(None), "–")
 
     def test_render_keeps_module_order_and_escapes(self):
-        rows = [{"id": "M00", "name": "Foundation", "issues": {"total": 2, "closed": 1, "done": 1, "open": 1}, "pct": 50.0,
+        rows = [{"id": "M00", "name": "Foundation", "issues": {"total": 2, "closed": 1, "done": 1, "started": 1, "open": 1}, "pct": 50.0,
                  "delta_day": 0.0, "delta_week": 10.0, "closed_day": 0, "closed_week": 1, "prs_merged_day": 0,
                  "prs_merged_week": 2, "prs_open": 1},
-                {"id": "M05", "name": "Orders <b>", "issues": {"total": 4, "closed": 0, "done": 2, "open": 2}, "pct": 50.0,
+                {"id": "M05", "name": "Orders <b>", "issues": {"total": 4, "closed": 0, "done": 2, "started": 3, "open": 2}, "pct": 50.0,
                  "delta_day": 25.0, "delta_week": 50.0, "closed_day": 1, "closed_week": 2, "prs_merged_day": 1,
                  "prs_merged_week": 3, "prs_open": 0,
                  "code": {"frontend": {"ratio": 0.5, "state": "partial", "detail": ["admin/orders (2)"]},
@@ -161,7 +161,7 @@ class Formatting(unittest.TestCase):
                  "code_week": {"frontend": {"ratio": 0.0, "state": "none", "detail": []},
                                "backend": {"ratio": 1.0, "state": "done", "detail": []},
                                "connection": {"ratio": 0.0, "state": "none", "detail": []}}}]
-        summary = {"issues_total": 6, "issues_closed": 3, "issues_closed_strict": 1, "pct": 50.0, "delta_day": 12.5,
+        summary = {"issues_total": 6, "issues_started": 4, "issues_done": 3, "done_pct": 50.0, "issues_closed": 3, "issues_closed_strict": 1, "pct": 50.0, "delta_day": 12.5,
                    "delta_week": 30.0, "closed_day": 1, "closed_week": 3, "closed_prev_week": 0, "prs_merged_day": 1,
                    "prs_merged_week": 5, "prs_merged_prev_week": 2, "prs_open": 1, "prs_per_day_week": 0.71,
                    "pct_points_per_pr_week": 6.0, "issues_per_pr_week": 0.6}
@@ -178,7 +178,7 @@ class Formatting(unittest.TestCase):
         self.assertIn("▲", html_out)  # frontend improved over the week
         self.assertIn("w1", html_out)
         md = progress.render_markdown(report)
-        self.assertIn("| M05 Orders <b> | 50.0% | +25.0 | +50.0 | 2/4 | 3 | ◐ | ✓ | ✗ |", md)
+        self.assertIn("| M05 Orders <b> | 50.0% | +25.0 | +50.0 | 3/4 | 2/4 | 3 | ◐ | ✓ | ✗ |", md)
 
 
 class ReposConfig(unittest.TestCase):

@@ -72,6 +72,8 @@ The prompt runs the command unattended and ends with the artifact link.
   (wyset, where work lands on main with `Ref #NN` and stories stay open) a default-branch commit citing the
   issue counts too, within `commitLookbackDays`. `trackedIssueLabels` limits the base (`agent:build`, `story`);
   `excludeIssueLabels` drops epics, questions, duplicates and the like.
+  **% started** (the meter) = requirements with a PR opened or merged that names them / all tracked requirements; **% done**
+  is reported beside it. `startedFromCommits: true` also counts default-branch commits that cite the requirement.
   **Modules:** an issue with no module is placed from a mention in its title or body, then its merged PR(s), then the
   files those PRs changed (`moduleLabelFormat` writes the label back on label-sourced repos); the rest are warned about.
   **Done = merged work AND marked done**, in every repository. Merged work: a merged PR that names the issue, or a

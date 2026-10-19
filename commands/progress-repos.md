@@ -42,5 +42,8 @@ With no arguments, run `repos list`. Report the command's output as is. Each ent
   the merged PR(s) naming it, then from the module owning the files those PRs changed. With this setting a label-sourced
   repo gets the label written on the issue; an epic-sourced repo keeps the module for the report only. Issues that
   cannot be placed are listed in a warning and counted under M00. `--no-write` only reads.
+- The meter (**% started**) is the share of tracked requirements (issues) with at least one PR opened or merged that names
+  them; **% done** is shown beside it (merged work that is also closed or labelled done). `startedFromCommits` (default
+  false) also counts a default-branch commit that cites the requirement, for work that lands without a PR.
 - `manageLabels` (default true): each report run first creates any missing status label, then puts `done` on issues that
   have merged work and `qa-passed`, then builds the report from the result. `report --no-write` only reads.
