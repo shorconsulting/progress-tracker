@@ -25,6 +25,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -561,6 +562,7 @@ def default_branch(entry: dict, gh: GitHub, full: str) -> str:
 
 
 WRITE_LABELS = True  # --no-write turns the label pass into a read-only check
+MARK_MERGED_DONE = False  # --mark-merged-done: one-off backfill, label every issue with merged work `done`
 
 LABEL_DEFAULTS = {
     "qa-passed": ("0E8A16", "Passed QA and ready to merge"),
@@ -596,6 +598,7 @@ def apply_label(gh: GitHub, full: str, issue: dict, name: str, warnings: list[st
         return False
     r = subprocess.run([gh.gh, "issue", "edit", str(issue["number"]), "-R", full, "--add-label", name],
                        capture_output=True, text=True)
+    time.sleep(0.25)
     if r.returncode != 0:
         warnings.append(f"could not label #{issue['number']} '{name}': {r.stderr.strip()[:100]}")
         return False
@@ -743,7 +746,8 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
         if n not in resolver.by_issue or n not in merged_work:
             continue
         names = set(label_names(it))
-        if qa_labels & names and done_labels and not done_labels & names and entry.get("manageLabels", True):
+        if (done_labels and not done_labels & names and entry.get("manageLabels", True)
+                and (MARK_MERGED_DONE or qa_labels & names)):
             if apply_label(gh, full, it, sorted(done_labels)[0], warnings):
                 labelled.append(n)
                 names = set(label_names(it))
@@ -1021,8 +1025,9 @@ def cmd_report(args: argparse.Namespace) -> int:
     if not repos:
         log("no active repositories; use `repos add owner/repo` or `repos enable owner/repo`")
         return 1
-    global WRITE_LABELS
+    global WRITE_LABELS, MARK_MERGED_DONE
     WRITE_LABELS = not getattr(args, "no_write", False)
+    MARK_MERGED_DONE = bool(getattr(args, "mark_merged_done", False))
     now = dt.datetime.now(UTC).replace(microsecond=0)
     gh = GitHub()
     results = []
@@ -1063,6 +1068,8 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--skip", help="comma-separated owner/repo list to exclude")
     rp.add_argument("--out", help="output directory (default ~/.claude/progress-tracker/out/<date>)")
     rp.add_argument("--no-clone", action="store_true", help="never clone; skip code columns when no checkout is at hand")
+    rp.add_argument("--mark-merged-done", action="store_true",
+                    help="one-off backfill: put the done label on every issue that has merged work, QA label or not")
     rp.add_argument("--no-write", action="store_true", help="read-only: never create labels or label issues")
     rp.add_argument("--json", action="store_true", help="print the JSON report instead of the markdown summary")
     rp.set_defaults(fn=cmd_report)

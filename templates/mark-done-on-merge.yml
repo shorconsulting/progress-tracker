@@ -1,0 +1,62 @@
+# Copy to .github/workflows/mark-done-on-merge.yml in each tracked repository.
+#
+# When a pull request merges into the default branch, every issue it names is labelled `done` and closed
+# (as completed). The reference rule is the progress-tracker's own: `#N` in the PR title, or `#N` lists in the
+# body after Ref / Refs / Closes / Fixes / Resolves / Implements / Story / Issue. Epics (label `epic`) are never
+# closed this way, and pull requests named by number are skipped.
+name: Mark issues done on merge
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  mark-done:
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+            const KEYWORD = /\b(?:ref|refs|references|closes?|closed|closing|fix(?:es|ed)?|resolves?|resolved|implements?|builds?|issues?|stor(?:y|ies))\b\s*:?\s*\(?\s*((?:#\d+\s*(?:[,;+/]|and|&)?\s*)+)/gi;
+            const numbers = new Set();
+            for (const m of (pr.title || '').matchAll(/#(\d+)/g)) numbers.add(Number(m[1]));
+            for (const k of (pr.body || '').matchAll(KEYWORD)) {
+              for (const m of k[1].matchAll(/#(\d+)/g)) numbers.add(Number(m[1]));
+            }
+            numbers.delete(pr.number);
+            if (numbers.size === 0) {
+              core.notice(`PR #${pr.number} names no issue: nothing to mark done (put "Closes #N" or "Story #N" in the title or body).`);
+              return;
+            }
+            // the label may not exist yet in a new repository
+            try {
+              await github.rest.issues.getLabel({ owner, repo, name: 'done' });
+            } catch (e) {
+              if (e.status !== 404) throw e;
+              await github.rest.issues.createLabel({ owner, repo, name: 'done', color: '1D76DB', description: 'Passed QA and merged to main' });
+            }
+            for (const n of numbers) {
+              let issue;
+              try {
+                issue = (await github.rest.issues.get({ owner, repo, issue_number: n })).data;
+              } catch (e) {
+                core.warning(`#${n}: ${e.message}`);
+                continue;
+              }
+              if (issue.pull_request) continue;
+              if (issue.labels.some(l => (l.name || l) === 'epic')) continue;
+              if (!issue.labels.some(l => (l.name || l) === 'done')) {
+                await github.rest.issues.addLabels({ owner, repo, issue_number: n, labels: ['done'] });
+              }
+              if (issue.state === 'open') {
+                await github.rest.issues.update({ owner, repo, issue_number: n, state: 'closed', state_reason: 'completed' });
+              }
+              core.info(`#${n}: marked done and closed by PR #${pr.number}`);
+            }
