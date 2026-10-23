@@ -104,7 +104,7 @@ The prompt runs the command unattended and ends with the artifact link.
 |---|---|---|---|
 | `homeporthealth/app` | labels `m01..m28` + code probes from MODULE-MAP | `agent:build` | closed or merged PR |
 | `Velocity-Org/ranch-rides` | labels `module:9.x`, names from the test-cases workbook and PRD | all but epics, decisions, questions | closed or merged PR |
-| `Velocity-Org/tidyhaus` | epics (`Epic D..G`, plus unlettered `EPIC —` issues) | all but questions, duplicates | closed or merged PR |
+| `ShorConsultingInc/tidyhaus` | from the code: `config/modules/tidyhaus.json` (M01..M14), PRs linked by topic (`inferPrLinks`) | all but epics, questions, duplicates | merged work and marked done |
 | `Shor-Consulting-Inc/wyset` | epics `[E00]..[E14]` with their stories | `story` | closed, merged PR, or a `Ref #NN` commit on main |
 
 ## Adding a repository with code columns
