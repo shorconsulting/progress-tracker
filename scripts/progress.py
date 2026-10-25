@@ -1029,7 +1029,7 @@ def fmt_int_delta(v: int | None) -> str:
 
 
 def render_markdown(report: dict) -> str:
-    lines = [f"# Build progress — {report['date']}", ""]
+    lines = [f"# {report.get('title') or 'Build progress'} — {report['date']}", ""]
     for r in report["repos"]:
         s = r["summary"]
         lines += [f"## {r['title']} (`{r['repo']}`)", "",
@@ -1058,7 +1058,7 @@ def render_markdown(report: dict) -> str:
 
 HTML_HEAD = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Build progress</title>
+<title>{title}</title>
 <style>
 :root{--bg:#f7f6f2;--card:#ffffff;--ink:#1d1f1b;--muted:#6b6f66;--line:#e2e0d8;--accent:#1f6f5f;--good:#2b7a4b;--warn:#b7791f;--bad:#b23a3a;--bar:#d9e8e2;--barfill:#1f6f5f;--chip:#eef0ea}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15170f;--card:#1e2117;--ink:#ecebe3;--muted:#9ea294;--line:#2d3127;--accent:#7cc4ad;--good:#7fcf9a;--warn:#e0b05a;--bad:#e07a7a;--bar:#2a3a33;--barfill:#7cc4ad;--chip:#262a1f}}
@@ -1104,7 +1104,8 @@ def state_chip(cell: dict | None, prev: dict | None = None) -> str:
 
 
 def render_html(report: dict) -> str:
-    parts = [HTML_HEAD, f"<h1>Build progress</h1><p class=\"sub\">{html.escape(report['date'])} · "
+    title = html.escape(report.get("title") or "Build progress")
+    parts = [HTML_HEAD.replace("{title}", title), f"<h1>{title}</h1><p class=\"sub\">{html.escape(report['date'])} · "
              f"{len(report['repos'])} active {'repository' if len(report['repos']) == 1 else 'repositories'} · "
              "% started = tracked requirements (issues) with at least one PR opened or merged / all tracked requirements, per module; done = merged work that is also closed or labelled done; deltas are recomputed from GitHub timestamps.</p>"]
     if len(report["repos"]) > 1:
@@ -1162,6 +1163,16 @@ def render_html(report: dict) -> str:
 
 # ----------------------------------------------------------------------------- report command
 
+def report_title(args: argparse.Namespace, repos: list[dict]) -> str:
+    """The artifact the report belongs to: `--title`, else '<Title> build progress' for a one-repository run (so it
+    does not overwrite the shared report), else 'Build progress'."""
+    if getattr(args, "title", None):
+        return args.title
+    if len(repos) == 1:
+        return f"{repos[0].get('title') or repos[0]['repo'].split('/')[-1]} build progress"
+    return "Build progress"
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     cfg = load_config()
     only = {s.strip().lower() for s in (args.only or "").split(",") if s.strip()}
@@ -1186,7 +1197,7 @@ def cmd_report(args: argparse.Namespace) -> int:
             log(f"{entry['repo']}: FAILED: {e}")
             failures.append({"repo": entry["repo"], "error": str(e)})
     report = {"date": now.strftime("%Y-%m-%d"), "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-              "repos": results, "failures": failures}
+              "title": report_title(args, repos), "repos": results, "failures": failures}
     out = Path(args.out) if args.out else HOME / "out" / report["date"]
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -1209,7 +1220,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(json.dumps(report, indent=2))
     else:
         print((out / "summary.md").read_text(encoding="utf-8"))
-        print(f"\nhtml: {out / 'report.html'}\njson: {out / 'report.json'}")
+        print(f"\ntitle: {report['title']}\nhtml: {out / 'report.html'}\njson: {out / 'report.json'}")
         for f in failures:
             print(f"FAILED {f['repo']}: {f['error']}")
     return 1 if failures and not results else 0
@@ -1227,6 +1238,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="one-off backfill: put the done label on every issue that has merged work, QA label or not")
     rp.add_argument("--no-write", action="store_true", help="read-only: never create labels or label issues")
     rp.add_argument("--json", action="store_true", help="print the JSON report instead of the markdown summary")
+    rp.add_argument("--title", help="report and artifact title (default: '<Title> build progress' for one repository, else 'Build progress')")
     rp.set_defaults(fn=cmd_report)
     rr = sub.add_parser("repos", help="list or toggle tracked repositories")
     rr.add_argument("action", choices=["list", "enable", "disable", "add", "remove"])

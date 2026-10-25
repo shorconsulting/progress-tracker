@@ -177,8 +177,23 @@ class Formatting(unittest.TestCase):
         rows[1]["id"] = "M05"
         self.assertIn("▲", html_out)  # frontend improved over the week
         self.assertIn("w1", html_out)
+        self.assertIn("<title>Build progress</title>", html_out)  # no title in the report: the shared one
+        report["title"] = "R & Co build progress"
+        self.assertIn("<title>R &amp; Co build progress</title>", progress.render_html(report))
+        self.assertIn("<h1>R &amp; Co build progress</h1>", progress.render_html(report))
+        self.assertTrue(progress.render_markdown(report).startswith("# R & Co build progress — 2026-10-12"))
+        del report["title"]
         md = progress.render_markdown(report)
         self.assertIn("| M05 Orders <b> | 50.0% | +25.0 | +50.0 | 3/4 | 2/4 | 3 | ◐ | ✓ | ✗ |", md)
+
+
+class ReportTitle(unittest.TestCase):
+    def test_one_repo_gets_its_own_artifact(self):
+        ns = lambda **k: progress.argparse.Namespace(**{"title": None, **k})
+        self.assertEqual(progress.report_title(ns(), [{"repo": "o/tidyhaus", "title": "TidyHaus"}]), "TidyHaus build progress")
+        self.assertEqual(progress.report_title(ns(), [{"repo": "o/tidyhaus"}]), "tidyhaus build progress")
+        self.assertEqual(progress.report_title(ns(), [{"repo": "a/b"}, {"repo": "c/d"}]), "Build progress")
+        self.assertEqual(progress.report_title(ns(title="Mine"), [{"repo": "a/b"}]), "Mine")
 
 
 class ReposConfig(unittest.TestCase):

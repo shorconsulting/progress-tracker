@@ -23,7 +23,7 @@ access (the `gh` CLI, or `GH_TOKEN` / `GITHUB_TOKEN` in the environment).
 
 | Command | What it does |
 |---|---|
-| `/progress-report [--only a/b,c/d] [--skip a/b]` | Builds today's report and publishes it as the `Build progress` artifact |
+| `/progress-report [--only a/b,c/d] [--skip a/b] [--title T]` | Builds today's report and publishes it as the `Build progress` artifact; a run over one repository publishes to its own `<Title> build progress` artifact instead, so it never overwrites the shared one |
 | `/progress-repos list` | Shows the repositories in the config and whether each is on |
 | `/progress-repos enable owner/repo` / `disable owner/repo` | Turns a repository on or off for the daily run |
 | `/progress-repos add owner/repo [--title T] [--modules NAME]` | Adds a repository (enabled) |
