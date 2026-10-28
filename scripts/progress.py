@@ -772,8 +772,13 @@ def assign_modules(entry: dict, gh: GitHub, full: str, issues: list[dict], resol
         log(f"{full}: assigned a module to {len(assigned)} issue(s)" + (" and labelled them" if writing else " (report only)"))
     left = [n for n in todo if n not in assigned]
     if left:
-        warnings.append(f"{len(left)} tracked issue(s) have no module and none could be inferred (counted under M00): "
-                        + ", ".join(f"#{n}" for n in left[:15]) + (" ..." if len(left) > 15 else ""))
+        note = (f"{len(left)} tracked issue(s) have no module and none could be inferred (counted under M00): "
+                + ", ".join(f"#{n}" for n in left[:15]) + (" ..." if len(left) > 15 else ""))
+        # with foundationForUnlinkedPrs, M00 is where unattributed work belongs by choice: nothing left to act on
+        if entry.get("foundationForUnlinkedPrs"):
+            log(f"{full}: {note}")
+        else:
+            warnings.append(note)
 
 
 def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -> dict:
@@ -898,10 +903,10 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
     if stuck:
         warnings.append(f"{len(stuck)} issue(s) have merged work but are not closed or labelled done: "
                         + ", ".join(f"#{n}" for n in stuck[:15]) + (" ..." if len(stuck) > 15 else ""))
-    if unlinked:
-        warnings.append(f"{unlinked} merged PR(s) name no tracked issue"
-                        + (f" (counted under {FOUNDATION})" if entry.get("foundationForUnlinkedPrs") else "")
-                        + " (put 'Story #N' in the title or body so merges can be matched)")
+    if unlinked and entry.get("foundationForUnlinkedPrs"):
+        log(f"{full}: {unlinked} merged PR(s) name no tracked issue (counted under {FOUNDATION})")
+    elif unlinked:
+        warnings.append(f"{unlinked} merged PR(s) name no tracked issue (put 'Story #N' in the title or body so merges can be matched)")
 
     # started = a PR opened or merged that names the requirement; commits on the default branch count only when
     # `startedFromCommits` is set (work that lands without a PR)
