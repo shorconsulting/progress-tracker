@@ -309,7 +309,7 @@ class FoundationForUnlinkedPrsTest(unittest.TestCase):
         self.assertEqual(rows(progress.analyze_repo(dict(entry), Fake(), NOW, False)), {"M01": (2, 1)})
         r = progress.analyze_repo(dict(entry, foundationForUnlinkedPrs=True), Fake(), NOW, False)
         self.assertEqual(rows(r), {"M00": (1, 1), "M01": (1, 0)})
-        self.assertTrue(any("counted under M00" in w for w in r["warnings"]))
+        self.assertFalse(any("name no tracked issue" in w for w in r["warnings"]))  # handled: M00 holds them, no warning
 
 
 if __name__ == "__main__":

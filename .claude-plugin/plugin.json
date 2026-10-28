@@ -1,6 +1,6 @@
 {
   "name": "progress-tracker",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Daily build-progress report by module across your active repositories: % complete, 1-day and 7-day deltas, PR throughput, and frontend / backend / wiring status per module, published as one artifact.",
   "author": { "name": "Homeport Health" },
   "keywords": ["progress", "report", "routine", "modules"]

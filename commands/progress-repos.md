@@ -49,6 +49,7 @@ With no arguments, run `repos list`. Report the command's output as is. Each ent
 - `foundationForUnlinkedPrs` (default false): a merged or open PR that names no tracked issue (and, with `inferPrLinks`,
   was not linked to one) counts under M00 instead of the module its files or wording point to, so module PR columns
   show only work on that module's requirements. Turn `inferPrLinks` off as well to send topic-linked PRs to M00 too.
+  M00 is then their home by choice, so the report drops the unlinked-PR and no-module warnings (the run log keeps the counts).
 - `moduleLabelFormat` (for example `m{n:02d}`, `module:9.{n}`): turns a module id into its label. Every report run gives
   each tracked issue that has no module one, inferred from a module mention in its title or body, then from the module of
   the merged PR(s) naming it, then from the module owning the files those PRs changed. With this setting a label-sourced
