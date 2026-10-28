@@ -774,8 +774,8 @@ def assign_modules(entry: dict, gh: GitHub, full: str, issues: list[dict], resol
     if left:
         note = (f"{len(left)} tracked issue(s) have no module and none could be inferred (counted under M00): "
                 + ", ".join(f"#{n}" for n in left[:15]) + (" ..." if len(left) > 15 else ""))
-        # with foundationForUnlinkedPrs, M00 is where unattributed work belongs by choice: nothing left to act on
-        if entry.get("foundationForUnlinkedPrs"):
+        # unattributed work is expected (unattributedIsExpected, or foundationForUnlinkedPrs): nothing left to act on
+        if entry.get("unattributedIsExpected") or entry.get("foundationForUnlinkedPrs"):
             log(f"{full}: {note}")
         else:
             warnings.append(note)
@@ -905,6 +905,8 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
                         + ", ".join(f"#{n}" for n in stuck[:15]) + (" ..." if len(stuck) > 15 else ""))
     if unlinked and entry.get("foundationForUnlinkedPrs"):
         log(f"{full}: {unlinked} merged PR(s) name no tracked issue (counted under {FOUNDATION})")
+    elif unlinked and entry.get("unattributedIsExpected"):
+        log(f"{full}: {unlinked} merged PR(s) name no tracked issue (placed by the files they change)")
     elif unlinked:
         warnings.append(f"{unlinked} merged PR(s) name no tracked issue (put 'Story #N' in the title or body so merges can be matched)")
 
