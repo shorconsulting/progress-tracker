@@ -899,7 +899,9 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
         warnings.append(f"{len(stuck)} issue(s) have merged work but are not closed or labelled done: "
                         + ", ".join(f"#{n}" for n in stuck[:15]) + (" ..." if len(stuck) > 15 else ""))
     if unlinked:
-        warnings.append(f"{unlinked} merged PR(s) name no tracked issue (put 'Story #N' in the title or body so merges can be matched)")
+        warnings.append(f"{unlinked} merged PR(s) name no tracked issue"
+                        + (f" (counted under {FOUNDATION})" if entry.get("foundationForUnlinkedPrs") else "")
+                        + " (put 'Story #N' in the title or body so merges can be matched)")
 
     # started = a PR opened or merged that names the requirement; commits on the default branch count only when
     # `startedFromCommits` is set (work that lands without a PR)
@@ -923,6 +925,20 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
     pr_mods = {p["number"]: attribute_pr(p, resolver, domain_to_module) or ([pr_file_mod[p["number"]]] if p["number"] in pr_file_mod else [])
                for p in prs}
     assign_modules(entry, gh, full, issues, resolver, prs_for, domain_to_module, module_names, warnings, pr_mods, rules)
+    # with `foundationForUnlinkedPrs`, a PR that builds no tracked requirement (by name, or by inference when
+    # inferPrLinks is on) is counted under M00 rather than placed in a module by its files or wording
+    if entry.get("foundationForUnlinkedPrs"):
+        linked_prs = {p["number"] for ps in prs_for.values() for p in ps}
+        linked_prs |= {p["number"] for p in prs
+                       if any(n in by_number and resolver.is_tracked(by_number[n])
+                              for n in issue_refs(p.get("title") or "", p.get("body") or "", ref_rule))}
+        moved = 0
+        for p in prs:
+            if p["number"] not in linked_prs and pr_mods.get(p["number"]):
+                pr_mods[p["number"]] = []
+                moved += 1
+        if moved:
+            log(f"{full}: counted {moved} PR(s) that name no tracked issue under {FOUNDATION}")
 
     points = {"now": now, "day": now - DAY, "week": now - WEEK, "two_weeks": now - 2 * WEEK}
     counts = {k: issue_counts(issues, t, resolver, merged_for, strict=True, started_for=started_for) for k, t in points.items()}
@@ -972,7 +988,7 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
             "closed_week": c_now["started"] - c_week["started"],
             "prs_merged_day": merged_between(points["day"], now, mid),
             "prs_merged_week": merged_between(points["week"], now, mid),
-            "prs_open": sum(1 for p in open_prs if mid in pr_mods[p["number"]]),
+            "prs_open": sum(1 for p in open_prs if mid in pr_mods[p["number"]] or (mid == FOUNDATION and not pr_mods[p["number"]])),
         }
         if tree and probes and mid != FOUNDATION:
             mod = next((m for m in probes["modules"] if m["id"] == mid), None)
