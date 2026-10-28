@@ -55,8 +55,8 @@
         "question"
       ],
       "inferPrLinks": false,
-      "foundationForUnlinkedPrs": true,
-      "_note": "Modules come from the code (config/modules/tidyhaus.json): the label pattern matches nothing, so PRs are placed by the files they change and issues by their PR or their words. Epics are not requirements. PRs that name no tracked issue, including ones a topic match would link, count under M00 (David, 28 Oct 2026)."
+      "unattributedIsExpected": true,
+      "_note": "Modules come from the code (config/modules/tidyhaus.json): the label pattern matches nothing, so PRs are placed by the files they change and issues by their PR or their words. Epics are not requirements. PRs that name no tracked issue go to the module their files belong to, only those fitting no module to M00, with no warning for either (David, 28 Oct 2026)."
     },
     {
       "repo": "Shor-Consulting-Inc/wyset",

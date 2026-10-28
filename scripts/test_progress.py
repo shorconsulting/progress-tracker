@@ -311,6 +311,31 @@ class FoundationForUnlinkedPrsTest(unittest.TestCase):
         self.assertEqual(rows(r), {"M00": (1, 1), "M01": (1, 0)})
         self.assertFalse(any("name no tracked issue" in w for w in r["warnings"]))  # handled: M00 holds them, no warning
 
+    def test_unattributed_is_expected_keeps_placement_and_drops_the_warning(self):
+        lab = lambda *n: [{"name": x} for x in n]  # noqa: E731
+        issues = [{"number": 1, "title": "T1", "body": "", "state": "open", "labels": lab("m01", "story"),
+                   "created_at": "2026-09-01T00:00:00Z", "closed_at": None, "updated_at": "2026-10-10T00:00:00Z"},
+                  {"number": 2, "title": "T2", "body": "", "state": "open", "labels": lab("story"),
+                   "created_at": "2026-09-01T00:00:00Z", "closed_at": None, "updated_at": "2026-10-10T00:00:00Z"}]
+        prs = [{"number": 21, "state": "closed", "title": "Tidy the build", "body": "", "labels": lab("m01"),
+                "created_at": "2026-10-11T00:00:00Z", "merged_at": "2026-10-12T00:00:00Z"}]
+
+        class Fake:
+            gh = None
+            def get(self, path):
+                return [] if "/files" in path else {"default_branch": "main"}
+            def paginate(self, path, per_page=100):
+                return prs if "/pulls" in path else [] if "/commits" in path else lab("m01") if "/labels" in path else issues
+
+        entry = {"repo": "o/r", "moduleSource": "labels", "moduleLabelPattern": r"^m(\d{2})$", "moduleIdFormat": "M{n:02d}",
+                 "trackedIssueLabels": ["story"], "qaLabels": [], "doneLabels": []}
+        loud = progress.analyze_repo(dict(entry), Fake(), NOW, False)
+        self.assertTrue(any("name no tracked issue" in w for w in loud["warnings"]))
+        self.assertTrue(any("no module" in w for w in loud["warnings"]))
+        r = progress.analyze_repo(dict(entry, unattributedIsExpected=True), Fake(), NOW, False)
+        self.assertEqual({m["id"]: m["prs_merged_day"] for m in r["modules"]}, {"M00": 0, "M01": 1})  # the PR stays in its module
+        self.assertEqual(r["warnings"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

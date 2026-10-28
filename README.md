@@ -74,7 +74,8 @@ The prompt runs the command unattended and ends with the artifact link.
   `excludeIssueLabels` drops epics, questions, duplicates and the like.
   **Inferred links:** `inferPrLinks: true` ties PRs that name no issue to the issue they are about (requirement id, else wording) and lists them in `inferred-links.csv`; nothing is written to GitHub.
   **Unlinked PRs to M00:** `foundationForUnlinkedPrs: true` counts every PR that builds no tracked requirement under M00
-  rather than in the module its files point to.
+  rather than in the module its files point to. `unattributedIsExpected: true` keeps placement by files and only drops
+  the unlinked-PR and no-module warnings.
   **Modules from code:** a probes file with `match` globs and `keywords` places PRs by the files they change and issues by
   their PR or their words (`config/modules/tidyhaus.json`).
   **% started** (the meter) = requirements with a PR opened or merged that names them / all tracked requirements; **% done**
@@ -106,7 +107,7 @@ The prompt runs the command unattended and ends with the artifact link.
 |---|---|---|---|
 | `homeporthealth/app` | labels `m01..m28` + code probes from MODULE-MAP | `agent:build` | closed or merged PR |
 | `Velocity-Org/ranch-rides` | labels `module:9.x`, names from the test-cases workbook and PRD | all but epics, decisions, questions | closed or merged PR |
-| `ShorConsultingInc/tidyhaus` | from the code: `config/modules/tidyhaus.json` (M01..M14), PRs that name no issue counted under M00 (`foundationForUnlinkedPrs`) | all but epics, questions, duplicates | merged work and marked done |
+| `ShorConsultingInc/tidyhaus` | from the code: `config/modules/tidyhaus.json` (M01..M14), PRs that name no issue placed by their files, without warnings (`unattributedIsExpected`) | all but epics, questions, duplicates | merged work and marked done |
 | `Shor-Consulting-Inc/wyset` | epics `[E00]..[E14]` with their stories | `story` | closed, merged PR, or a `Ref #NN` commit on main |
 
 ## Adding a repository with code columns
