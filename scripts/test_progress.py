@@ -287,5 +287,30 @@ class InferLinksTest(unittest.TestCase):
         self.assertNotEqual(links[11][0], 3)
 
 
+class FoundationForUnlinkedPrsTest(unittest.TestCase):
+    def test_prs_naming_no_tracked_issue_count_under_m00_merged_and_open(self):
+        lab = lambda *n: [{"name": x} for x in n]  # noqa: E731
+        issues = [{"number": 1, "title": "T1", "body": "", "state": "open", "labels": lab("m01", "story"),
+                   "created_at": "2026-09-01T00:00:00Z", "closed_at": None, "updated_at": "2026-10-10T00:00:00Z"}]
+        pr = lambda n, t, state="closed": {"number": n, "state": state, "title": t, "body": "", "labels": lab("m01"),  # noqa: E731
+                                           "created_at": "2026-10-11T00:00:00Z", "merged_at": "2026-10-12T00:00:00Z" if state == "closed" else None}
+        prs = [pr(20, "Story #1"), pr(21, "Tidy the build"), pr(22, "Rename things", "open")]
+
+        class Fake:
+            gh = None
+            def get(self, path):
+                return [] if "/files" in path else {"default_branch": "main"}
+            def paginate(self, path, per_page=100):
+                return prs if "/pulls" in path else [] if "/commits" in path else lab("m01") if "/labels" in path else issues
+
+        entry = {"repo": "o/r", "moduleSource": "labels", "moduleLabelPattern": r"^m(\d{2})$", "moduleIdFormat": "M{n:02d}",
+                 "trackedIssueLabels": ["story"], "qaLabels": [], "doneLabels": []}
+        rows = lambda r: {m["id"]: (m["prs_merged_day"], m["prs_open"]) for m in r["modules"]}  # noqa: E731
+        self.assertEqual(rows(progress.analyze_repo(dict(entry), Fake(), NOW, False)), {"M01": (2, 1)})
+        r = progress.analyze_repo(dict(entry, foundationForUnlinkedPrs=True), Fake(), NOW, False)
+        self.assertEqual(rows(r), {"M00": (1, 1), "M01": (1, 0)})
+        self.assertTrue(any("counted under M00" in w for w in r["warnings"]))
+
+
 if __name__ == "__main__":
     unittest.main()
