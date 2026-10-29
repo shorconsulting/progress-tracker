@@ -178,7 +178,7 @@ class Formatting(unittest.TestCase):
         self.assertIn("▲", html_out)  # frontend improved over the week
         self.assertIn("w1", html_out)
         md = progress.render_markdown(report)
-        self.assertIn("| M05 Orders <b> | 50.0% | +25.0 | +50.0 | 3/4 | 2/4 | 3 | ◐ | ✓ | ✗ |", md)
+        self.assertIn("| M05 Orders <b> | 50.0% | +25.0 | +50.0 | 3/4 | 2/4 | 0 | 3 | ◐ | ✓ | ✗ |", md)
 
 
 class ReposConfig(unittest.TestCase):
@@ -251,6 +251,31 @@ class DoneDateTest(unittest.TestCase):
         r = progress.analyze_repo(entry, Fake(), NOW, False)
         self.assertEqual(r["summary"]["issues_done"], 1)
         self.assertEqual(r["summary"]["delta_week"], 0.0)  # done a fortnight ago on the merge date, not this week
+
+    def test_closing_today_counts_as_done_today_by_close_date(self):
+        closed_at = (NOW - progress.DAY / 2).strftime("%Y-%m-%dT%H:%M:%SZ")
+        issue = lambda n, state, closed: {"number": n, "title": f"T{n}", "body": "", "state": state, "state_reason": None,  # noqa: E731
+                                          "labels": [{"name": "story"}], "created_at": "2026-09-01T00:00:00Z",
+                                          "closed_at": closed, "updated_at": "2026-10-18T00:00:00Z"}
+        issues = [issue(2, "closed", closed_at), issue(3, "closed", "2026-10-02T00:00:00Z"), issue(4, "open", None)]
+        prs = [{"number": 9, "state": "closed", "merged_at": "2026-10-01T00:00:00Z", "created_at": "2026-09-30T00:00:00Z",
+                "title": "Story #2", "body": "", "labels": []},
+               {"number": 10, "state": "closed", "merged_at": "2026-10-01T00:00:00Z", "created_at": "2026-09-30T00:00:00Z",
+                "title": "Story #3", "body": "", "labels": []}]
+
+        class Fake:
+            gh = None
+            def get(self, path):
+                return {"default_branch": "main"}
+            def paginate(self, path, per_page=100):
+                return prs if "/pulls" in path else [] if "/commits" in path or "/events" in path or "/labels" in path else issues
+
+        entry = {"repo": "o/r", "moduleSource": "labels", "moduleLabelPattern": r"^(?!)(\d+)$", "moduleIdFormat": "M{n:02d}",
+                 "trackedIssueLabels": ["story"], "manageLabels": False}
+        s = progress.analyze_repo(entry, Fake(), NOW, False)["summary"]
+        self.assertEqual(s["delta_day"], 0.0)  # started weeks ago: the started meter does not move
+        self.assertEqual(s["done_day"], 1)  # but #2 was closed today, so it is done today by close date
+        self.assertEqual(s["done_delta_day"], 33.4)  # 66.7 - 33.3, each rounded first like the other deltas
 
 
 class PathRulesTest(unittest.TestCase):
