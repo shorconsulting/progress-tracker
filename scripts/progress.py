@@ -852,6 +852,7 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
             warnings.append(f"{len(inferred)} PR(s) were linked to an issue by topic, not by name (inferred; see inferred-links.csv): "
                             f"{sum(1 for x in inferred if x['how'] == 'id')} by requirement id, {sum(1 for x in inferred if x['how'] == 'topic')} by wording")
     merged_for: dict[int, dt.datetime] = {}
+    closed_for: dict[int, dt.datetime] = {}  # the same issues, dated by when they were closed or labelled done
     merged_commit: dict[int, dt.datetime] = {}
 
     # optional third signal: a commit on the default branch that cites the issue (`Ref #68`)
@@ -897,6 +898,9 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
             # dated by the earlier of the merge and the mark: a label added late (a backfill, a CI rollout) must not
             # make old work look like it finished today
             merged_for[n] = min(merged_work[n], min(marked))
+            # done by close date: the day the issue was closed (or, when still open, labelled done), and not before
+            # its work merged; this is what moves on a busy day of closing requirements whose PRs opened weeks ago
+            closed_for[n] = max(merged_work[n], marked[0])
     if labelled:
         log(f"{full}: labelled done: " + ", ".join(f"#{n}" for n in labelled))
     stuck = sorted(n for n in merged_work if n in by_number and n not in merged_for and resolver.is_tracked(by_number[n]))
@@ -949,6 +953,7 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
 
     points = {"now": now, "day": now - DAY, "week": now - WEEK, "two_weeks": now - 2 * WEEK}
     counts = {k: issue_counts(issues, t, resolver, merged_for, strict=True, started_for=started_for) for k, t in points.items()}
+    closed_counts = {k: issue_counts(issues, points[k], resolver, closed_for, strict=True) for k in ("now", "day")}
 
     open_prs = [p for p in prs if p.get("state") == "open"]
 
@@ -982,6 +987,8 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
         c_now, c_day, c_week = (counts[k].get(mid, empty) for k in ("now", "day", "week"))
         # the meter is the share of requirements with a PR started; done (merged and marked) is its own figure
         p_now, p_day, p_week = (pct(c["started"], c["total"]) for c in (c_now, c_day, c_week))
+        k_now, k_day = (closed_counts[k].get(mid, empty) for k in ("now", "day"))
+        k_pnow, k_pday = pct(k_now["done"], k_now["total"]), pct(k_day["done"], k_day["total"])
         row = {
             "id": mid,
             "name": "Foundation / unattributed" if mid == FOUNDATION else module_names.get(mid, mid),
@@ -993,6 +1000,8 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
             "delta_week": None if p_now is None or p_week is None else round(p_now - p_week, 1),
             "closed_day": c_now["started"] - c_day["started"],
             "closed_week": c_now["started"] - c_week["started"],
+            "done_day": k_now["done"] - k_day["done"],
+            "done_delta_day": None if k_pnow is None or k_pday is None else round(k_pnow - k_pday, 1),
             "prs_merged_day": merged_between(points["day"], now, mid),
             "prs_merged_week": merged_between(points["week"], now, mid),
             "prs_open": sum(1 for p in open_prs if mid in pr_mods[p["number"]] or (mid == FOUNDATION and not pr_mods[p["number"]])),
@@ -1009,6 +1018,8 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
         return sum(v["total"] for v in c.values()), sum(v[key] for v in c.values())
 
     d_now = totals(counts["now"], "done")
+    k_now, k_day = totals(closed_counts["now"], "done"), totals(closed_counts["day"], "done")
+    k_pnow, k_pday = pct(k_now[1], k_now[0]), pct(k_day[1], k_day[0])
     t_now, t_day, t_week = totals(counts["now"]), totals(counts["day"]), totals(counts["week"])
     p_now, p_day, p_week = pct(t_now[1], t_now[0]), pct(t_day[1], t_day[0]), pct(t_week[1], t_week[0])
     m_day, m_week, m_prev_week = (merged_between(points["day"], now), merged_between(points["week"], now),
@@ -1022,6 +1033,8 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
         "delta_day": None if p_now is None or p_day is None else round(p_now - p_day, 1),
         "delta_week": None if p_now is None or p_week is None else round(p_now - p_week, 1),
         "closed_day": t_now[1] - t_day[1], "closed_week": closed_week, "closed_prev_week": closed_prev_week,  # started, not done
+        "done_day": k_now[1] - k_day[1],
+        "done_delta_day": None if k_pnow is None or k_pday is None else round(k_pnow - k_pday, 1),
         "prs_merged_day": m_day, "prs_merged_week": m_week, "prs_merged_prev_week": m_prev_week,
         "prs_open": len(open_prs),
         "prs_per_day_week": round(m_week / 7, 2),
@@ -1051,6 +1064,12 @@ def fmt_int_delta(v: int | None) -> str:
     return "–" if v is None else (f"+{v}" if v > 0 else str(v))
 
 
+def fmt_done_day(m: dict) -> str:
+    """Requirements done in the last 24h by close date, with the done-% points they moved."""
+    n = m.get("done_day") or 0
+    return "0" if not n else f"+{n} ({fmt_delta(m.get('done_delta_day'), '')})"
+
+
 def render_markdown(report: dict) -> str:
     lines = [f"# Build progress — {report['date']}", ""]
     for r in report["repos"]:
@@ -1059,6 +1078,7 @@ def render_markdown(report: dict) -> str:
                   f"- Overall: **{fmt_pct(s['pct'])} started** ({s['issues_started']}/{s['issues_total']} requirements have a PR started); "
                   f"**{fmt_pct(s['done_pct'])} done** ({s['issues_done']}/{s['issues_total']} merged and marked done), "
                   f"{fmt_delta(s['delta_day'])} vs yesterday, {fmt_delta(s['delta_week'])} vs last week",
+                  f"- Done in the last 24h by close date: {s.get('done_day', 0)} requirement(s), {fmt_delta(s.get('done_delta_day'))} done",
                   f"- PRs merged: {s['prs_merged_day']} in the last 24h, {s['prs_merged_week']} in the last 7 days "
                   f"(prev week {s['prs_merged_prev_week']}); {s['prs_open']} open",
                   f"- Efficiency (7d): {s['prs_per_day_week']} PRs/day, "
@@ -1066,14 +1086,14 @@ def render_markdown(report: dict) -> str:
                   f"{s['issues_per_pr_week'] if s['issues_per_pr_week'] is not None else '–'} issues/PR", ""]
         for w in r["warnings"]:
             lines.append(f"- Warning: {w}")
-        hdr = "| Module | % started | Δ1d | Δ7d | Started/total | Done/total | PRs 7d | FE | BE | Wired |"
-        lines += [hdr, "|---|---:|---:|---:|---:|---:|---:|:--:|:--:|:--:|"]
+        hdr = "| Module | % started | Δ1d | Δ7d | Started/total | Done/total | Done 1d | PRs 7d | FE | BE | Wired |"
+        lines += [hdr, "|---|---:|---:|---:|---:|---:|---:|---:|:--:|:--:|:--:|"]
         for m in r["modules"]:
             code = m.get("code") or {}
             cell = lambda k: {"done": "✓", "partial": "◐", "none": "✗", "n/a": "–"}.get(code.get(k, {}).get("state", "n/a"), "–")  # noqa: E731
             lines.append(f"| {m['id']} {m['name']} | {fmt_pct(m['pct'])} | {fmt_delta(m['delta_day'], '')} | "
                          f"{fmt_delta(m['delta_week'], '')} | {m['issues']['started']}/{m['issues']['total']} | "
-                         f"{m['issues']['done']}/{m['issues']['total']} | "
+                         f"{m['issues']['done']}/{m['issues']['total']} | {fmt_done_day(m)} | "
                          f"{m['prs_merged_week']} | {cell('frontend')} | {cell('backend')} | {cell('connection')} |")
         lines.append("")
     return "\n".join(lines)
@@ -1129,7 +1149,7 @@ def state_chip(cell: dict | None, prev: dict | None = None) -> str:
 def render_html(report: dict) -> str:
     parts = [HTML_HEAD, f"<h1>Build progress</h1><p class=\"sub\">{html.escape(report['date'])} · "
              f"{len(report['repos'])} active {'repository' if len(report['repos']) == 1 else 'repositories'} · "
-             "% started = tracked requirements (issues) with at least one PR opened or merged / all tracked requirements, per module; done = merged work that is also closed or labelled done; deltas are recomputed from GitHub timestamps.</p>"]
+             "% started = tracked requirements (issues) with at least one PR opened or merged / all tracked requirements, per module; done = merged work that is also closed or labelled done; Done 1d = requirements closed (or labelled done) in the last 24h with their work merged, dated by the close; deltas are recomputed from GitHub timestamps.</p>"]
     if len(report["repos"]) > 1:
         parts.append("<h2>All active builds</h2><div class=\"card\"><table><thead><tr><th>Repository</th><th class=num>% started</th><th class=num>% done</th>"
                      "<th class=num>Δ 1d</th><th class=num>Δ 7d</th><th class=num>Started 7d</th><th class=num>PRs merged 7d</th>"
@@ -1151,6 +1171,7 @@ def render_html(report: dict) -> str:
                      tile("Started", fmt_pct(s["pct"]), f"{s['issues_started']} of {s['issues_total']} requirements have a PR started") +
                      tile("Done", fmt_pct(s["done_pct"]), f"{s['issues_done']} of {s['issues_total']} merged and marked done") +
                      tile("Δ 1 day", fmt_delta(s["delta_day"]), f"{s['closed_day']} newly started", cls_delta(s["delta_day"])) +
+                     tile("Done 1 day", fmt_delta(s.get("done_delta_day")), f"{s.get('done_day', 0)} closed or labelled done in 24h", cls_delta(s.get("done_delta_day"))) +
                      tile("Δ 7 days", fmt_delta(s["delta_week"]), f"{s['closed_week']} newly started (prev week {s['closed_prev_week']})", cls_delta(s["delta_week"])) +
                      tile("PRs merged 7d", str(s["prs_merged_week"]), f"{fmt_int_delta(wk_trend)} vs previous week · {s['prs_merged_day']} in 24h", cls_delta(wk_trend)) +
                      tile("Throughput", f"{s['prs_per_day_week']} PR/day", f"{s['issues_per_pr_week'] if s['issues_per_pr_week'] is not None else '–'} issues per PR") +
@@ -1158,7 +1179,7 @@ def render_html(report: dict) -> str:
                           f"{s['prs_open']} PRs open") + "</div>")
         code_cols = r["has_code_columns"]
         parts.append("<div class=\"card\"><table><thead><tr><th>Module</th><th>% started</th><th class=num>Δ 1d</th><th class=num>Δ 7d</th>"
-                     "<th class=num>Started / total</th><th class=num>Done / total</th><th class=num>Started 7d</th><th class=num>PRs 1d</th><th class=num>PRs 7d</th><th class=num>Open PRs</th>"
+                     "<th class=num>Started / total</th><th class=num>Done / total</th><th class=num>Done 1d</th><th class=num>Started 7d</th><th class=num>PRs 1d</th><th class=num>PRs 7d</th><th class=num>Open PRs</th>"
                      + ("<th>Frontend</th><th>Backend</th><th>FE → BE wired</th>" if code_cols else "") + "</tr></thead><tbody>")
         for m in r["modules"]:
             p = m["pct"] or 0
@@ -1166,7 +1187,7 @@ def render_html(report: dict) -> str:
                          f"<td><span class=bar><i style=\"width:{p:.0f}%\"></i></span>{fmt_pct(m['pct'])}</td>"
                          f"<td class='num {cls_delta(m['delta_day'])}'>{fmt_delta(m['delta_day'], '')}</td>"
                          f"<td class='num {cls_delta(m['delta_week'])}'>{fmt_delta(m['delta_week'], '')}</td>"
-                         f"<td class=num>{m['issues']['started']} / {m['issues']['total']}</td><td class=num>{m['issues']['done']} / {m['issues']['total']}</td><td class=num>{m['closed_week']}</td>"
+                         f"<td class=num>{m['issues']['started']} / {m['issues']['total']}</td><td class=num>{m['issues']['done']} / {m['issues']['total']}</td><td class='num {cls_delta(m.get('done_delta_day'))}'>{fmt_done_day(m)}</td><td class=num>{m['closed_week']}</td>"
                          f"<td class=num>{m['prs_merged_day']}</td><td class=num>{m['prs_merged_week']}</td><td class=num>{m['prs_open']}</td>")
             if code_cols:
                 c, cw = m.get("code"), m.get("code_week")
