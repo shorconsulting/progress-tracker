@@ -62,6 +62,13 @@ def load_config() -> dict:
     with open(CONFIG_PATH, encoding="utf-8") as f:
         cfg = json.load(f)
     cfg.setdefault("repos", [])
+    # a setting added to the plugin default reaches existing installs: keys an entry lacks are filled in from the
+    # default entry for the same repo; keys the user set are never overwritten
+    with open(DEFAULT_CONFIG, encoding="utf-8") as f:
+        defaults = {r["repo"].lower(): r for r in json.load(f).get("repos", [])}
+    for r in cfg["repos"]:
+        for k, v in defaults.get(r["repo"].lower(), {}).items():
+            r.setdefault(k, v)
     return cfg
 
 
@@ -129,7 +136,7 @@ class GitHub:
         self.mode = None
 
     def _gh(self, path: str) -> list | dict:
-        p = subprocess.run([self.gh, "api", path], capture_output=True, text=True)
+        p = subprocess.run([self.gh, "api", path], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if p.returncode != 0:
             raise RuntimeError(p.stderr.strip()[:300])
         return json.loads(p.stdout)
@@ -176,7 +183,7 @@ class GitHub:
 # ----------------------------------------------------------------------------- local checkout
 
 def run_git(repo: Path, *args: str) -> str:
-    p = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    p = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:
         raise RuntimeError(p.stderr.strip()[:300])
     return p.stdout
@@ -216,7 +223,7 @@ def locate_checkout(full: str, allow_clone: bool, local_path: str | None = None)
     url = f"https://github.com/{full}.git"
     try:
         subprocess.run(["git", "clone", "--quiet", "--filter=blob:none", url, str(cache)],
-                       check=True, capture_output=True, text=True)
+                       check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
         return cache
     except subprocess.CalledProcessError as e:
         log(f"{full}: clone failed: {e.stderr.strip()[:200]}")
@@ -269,7 +276,7 @@ class Tree:
 
     def grep_files(self, pattern: str, pathspec: str) -> list[str]:
         p = subprocess.run(["git", "-C", str(self.repo), "grep", "-l", "-E", pattern, self.ref, "--", pathspec],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
         return [ln.split(":", 1)[1] for ln in p.stdout.splitlines() if ":" in ln] if p.returncode == 0 else []
 
     def read(self, path: str) -> str:
@@ -586,7 +593,7 @@ def ensure_labels(gh: GitHub, full: str, names: list[str], warnings: list[str]) 
             warnings.append(f"label '{name}' is missing and `gh` is not installed to create it")
             continue
         r = subprocess.run([gh.gh, "label", "create", name, "-R", full, "--color", color, "--description", desc],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
         if r.returncode == 0:
             log(f"{full}: created label '{name}'")
         else:
@@ -598,7 +605,7 @@ def apply_label(gh: GitHub, full: str, issue: dict, name: str, warnings: list[st
     if not WRITE_LABELS or not gh.gh:
         return False
     r = subprocess.run([gh.gh, "issue", "edit", str(issue["number"]), "-R", full, "--add-label", name],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
     time.sleep(0.25)
     if r.returncode != 0:
         warnings.append(f"could not label #{issue['number']} '{name}': {r.stderr.strip()[:100]}")
@@ -1101,7 +1108,7 @@ def render_markdown(report: dict) -> str:
 
 HTML_HEAD = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Build progress</title>
+<title>{title}</title>
 <style>
 :root{--bg:#f7f6f2;--card:#ffffff;--ink:#1d1f1b;--muted:#6b6f66;--line:#e2e0d8;--accent:#1f6f5f;--good:#2b7a4b;--warn:#b7791f;--bad:#b23a3a;--bar:#d9e8e2;--barfill:#1f6f5f;--chip:#eef0ea}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15170f;--card:#1e2117;--ink:#ecebe3;--muted:#9ea294;--line:#2d3127;--accent:#7cc4ad;--good:#7fcf9a;--warn:#e0b05a;--bad:#e07a7a;--bar:#2a3a33;--barfill:#7cc4ad;--chip:#262a1f}}
@@ -1146,8 +1153,8 @@ def state_chip(cell: dict | None, prev: dict | None = None) -> str:
     return f'<span class="state s-{st.replace("/", "")}" title="{title}">{label}</span>{arrow}'
 
 
-def render_html(report: dict) -> str:
-    parts = [HTML_HEAD, f"<h1>Build progress</h1><p class=\"sub\">{html.escape(report['date'])} · "
+def render_html(report: dict, title: str = "Build progress") -> str:
+    parts = [HTML_HEAD.replace("{title}", html.escape(title)), f"<h1>{html.escape(title)}</h1><p class=\"sub\">{html.escape(report['date'])} · "
              f"{len(report['repos'])} active {'repository' if len(report['repos']) == 1 else 'repositories'} · "
              "% started = tracked requirements (issues) with at least one PR opened or merged / all tracked requirements, per module; done = merged work that is also closed or labelled done; Done 1d = requirements closed (or labelled done) in the last 24h with their work merged, dated by the close; deltas are recomputed from GitHub timestamps.</p>"]
     if len(report["repos"]) > 1:
@@ -1206,6 +1213,10 @@ def render_html(report: dict) -> str:
 
 # ----------------------------------------------------------------------------- report command
 
+def repo_page_name(full: str) -> str:
+    return "report-" + re.sub(r"[^a-z0-9]+", "-", full.lower()).strip("-") + ".html"
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     cfg = load_config()
     only = {s.strip().lower() for s in (args.only or "").split(",") if s.strip()}
@@ -1243,17 +1254,26 @@ def cmd_report(args: argparse.Namespace) -> int:
             for repo, x in links:
                 w.writerow([repo, x["pr"], x["pr_title"], x["issue"], x["issue_title"], x["how"], x["score"], x["merged"]])
     (out / "report.html").write_text(render_html(report), encoding="utf-8")
+    # one page per repository, titled after it, so each repository's report keeps its own artifact
+    pages = []
+    for r in results:
+        title = f"{r['title']} build progress"
+        page = repo_page_name(r["repo"])
+        (out / page).write_text(render_html(dict(report, repos=[r]), title), encoding="utf-8")
+        pages.append((r["repo"], title, page))
     (out / "summary.md").write_text(render_markdown(report), encoding="utf-8")
     latest = HOME / "out" / "latest"
     if not args.out:
         latest.mkdir(parents=True, exist_ok=True)
-        for name in ("report.json", "report.html", "summary.md"):
+        for name in ("report.json", "report.html", "summary.md", *(page for _, _, page in pages)):
             shutil.copy(out / name, latest / name)
     if args.json:
         print(json.dumps(report, indent=2))
     else:
         print((out / "summary.md").read_text(encoding="utf-8"))
         print(f"\nhtml: {out / 'report.html'}\njson: {out / 'report.json'}")
+        for repo, title, page in pages:
+            print(f"page {repo}: {out / page} (artifact title: {title})")
         for f in failures:
             print(f"FAILED {f['repo']}: {f['error']}")
     return 1 if failures and not results else 0
@@ -1285,4 +1305,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    # the summary carries Δ, ✓ and ▲; a Windows console defaults to cp1252, which cannot print them
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main())

@@ -16,7 +16,9 @@
       ],
       "excludeIssueLabels": [
         "epic"
-      ]
+      ],
+      "foundationForUnlinkedPrs": true,
+      "_note": "David, 29 Oct 2026: merged PRs naming no tracked issue, and issues with no module, count under M00 with no warning."
     },
     {
       "repo": "Velocity-Org/ranch-rides",

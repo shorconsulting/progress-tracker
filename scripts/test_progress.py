@@ -195,6 +195,33 @@ class ReposConfig(unittest.TestCase):
         self.assertEqual(progress.main(["repos", "enable", "not/there"]), 1)
         self.assertEqual(progress.main(["repos", "add", "bad name"]), 2)
 
+    def test_default_settings_reach_an_existing_install_without_overwriting(self):
+        home = Path(tempfile.mkdtemp(prefix="pt-cfg-"))
+        default = home / "default.json"
+        default.write_text('{"repos": [{"repo": "acme/widgets", "title": "Default", "foundationForUnlinkedPrs": true}]}',
+                           encoding="utf-8")
+        (home / "repos.json").write_text('{"repos": [{"repo": "Acme/Widgets", "title": "Mine", "enabled": false}]}',
+                                         encoding="utf-8")
+        progress.HOME, progress.CONFIG_PATH, saved = home, home / "repos.json", progress.DEFAULT_CONFIG
+        progress.DEFAULT_CONFIG = default
+        try:
+            r = progress.find_repo(progress.load_config(), "acme/widgets")
+        finally:
+            progress.DEFAULT_CONFIG = saved
+        self.assertTrue(r["foundationForUnlinkedPrs"])
+        self.assertEqual((r["title"], r["enabled"]), ("Mine", False))
+
+
+class RepoPages(unittest.TestCase):
+    def test_each_repository_gets_a_page_titled_after_it(self):
+        self.assertEqual(progress.repo_page_name("homeporthealth/app"), "report-homeporthealth-app.html")
+        self.assertEqual(progress.repo_page_name("Velocity-Org/ranch.rides"), "report-velocity-org-ranch-rides.html")
+        report = {"date": "2026-10-12", "generated_at": "2026-10-12T12:00:00Z", "failures": [], "repos": []}
+        page = progress.render_html(report, "R & D build progress")
+        self.assertIn("<title>R &amp; D build progress</title>", page)
+        self.assertIn("<h1>R &amp; D build progress</h1>", page)
+        self.assertIn("<title>Build progress</title>", progress.render_html(report))
+
 
 class AssignModulesTest(unittest.TestCase):
     def test_infers_from_text_pr_and_files_and_lists_the_rest(self):

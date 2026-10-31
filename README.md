@@ -2,8 +2,8 @@
 
 A Claude Code plugin that produces a daily build-progress report across your active repositories: overall %
 complete with 1-day and 7-day deltas, PR throughput and efficiency, and a per-module table (fixed order M00,
-M01, M02 ...) with % complete and frontend / backend / frontend-to-backend wiring status. Everything lands in one
-artifact.
+M01, M02 ...) with % complete and frontend / backend / frontend-to-backend wiring status. Each repository
+gets its own artifact.
 
 It stores nothing between runs: deltas are recomputed from issue `closed_at`, PR `merged_at` and git first-add
 dates, so it gives the same answer from whichever Claude account runs it that day.
@@ -19,11 +19,15 @@ In a terminal Claude Code session:
 Answer `y` to add the marketplace and pick the user scope. The plugin needs `python3`, `git`, and GitHub read
 access (the `gh` CLI, or `GH_TOKEN` / `GITHUB_TOKEN` in the environment).
 
+Settings in the plugin's `config/repos.default.json` reach every install: on first run it is copied to
+`~/.claude/progress-tracker/repos.json`, and on later runs any setting a repository's entry lacks is filled in from
+the default entry for the same repository (settings you changed are kept).
+
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `/progress-report [--only a/b,c/d] [--skip a/b]` | Builds today's report and publishes it as the `Build progress` artifact |
+| `/progress-report [--only a/b,c/d] [--skip a/b]` | Builds today's report and publishes each repository's report as its own `<Title> build progress` artifact |
 | `/progress-repos list` | Shows the repositories in the config and whether each is on |
 | `/progress-repos enable owner/repo` / `disable owner/repo` | Turns a repository on or off for the daily run |
 | `/progress-repos add owner/repo [--title T] [--modules NAME]` | Adds a repository (enabled) |
