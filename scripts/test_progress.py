@@ -25,6 +25,10 @@ def issue(n, labels, created, closed=None):
             "state": "closed" if closed else "open", "closed_at": ts(closed) if closed else None}
 
 
+page_chip = progress.page.chip
+WINDOW = {"days": 7, "tz": "America/Los_Angeles", "start": "2026-10-05T19:00:00Z", "end": "2026-10-12T19:00:00Z"}
+
+
 class IssueCounts(unittest.TestCase):
     def test_done_counts_closed_and_merged_references_as_of_cutoff(self):
         issues = [
@@ -135,7 +139,7 @@ class CodeColumns(unittest.TestCase):
         week = progress.code_status(FakeTree(), probes, mod, NOW - progress.WEEK, used_now)
         self.assertEqual(now["connection"]["state"], "done")
         self.assertEqual(week["connection"]["state"], "done")
-        self.assertNotIn("▲", progress.state_chip(now["connection"], week["connection"]))
+        self.assertNotIn("▲", page_chip(now["connection"], week["connection"]))
 
 
 
@@ -169,13 +173,16 @@ class Formatting(unittest.TestCase):
                   "repos": [{"repo": "o/r", "title": "R", "generated_at": "x", "has_code_columns": True, "warnings": ["w1"],
                              "summary": summary, "modules": rows}]}
         rows[1]["id"] = "M05<i>"
-        html_out = progress.render_html(report)
+        report["window"] = WINDOW
+        rows[0]["week"] = {"started": 0, "done": 0, "total": 2}
+        rows[1]["week"] = {"started": 1, "done": 0, "total": 4}
+        html_out = progress.page.render_html(report)
         self.assertLess(html_out.index("M00"), html_out.index("M05"))
         self.assertIn("Orders &lt;b&gt;", html_out)
         self.assertIn("M05&lt;i&gt;", html_out)
         self.assertNotIn("M05<i>", html_out)
         rows[1]["id"] = "M05"
-        self.assertIn("▲", html_out)  # frontend improved over the week
+        self.assertIn("\u25b2", html_out)  # frontend improved over the week
         self.assertIn("w1", html_out)
         md = progress.render_markdown(report)
         self.assertIn("| M05 Orders <b> | 50.0% | +25.0 | +50.0 | 3/4 | 2/4 | 0 | 3 | ◐ | ✓ | ✗ |", md)
@@ -214,13 +221,12 @@ class ReposConfig(unittest.TestCase):
 
 class RepoPages(unittest.TestCase):
     def test_each_repository_gets_a_page_titled_after_it(self):
-        self.assertEqual(progress.repo_page_name("homeporthealth/app"), "report-homeporthealth-app.html")
-        self.assertEqual(progress.repo_page_name("Velocity-Org/ranch.rides"), "report-velocity-org-ranch-rides.html")
-        report = {"date": "2026-10-12", "generated_at": "2026-10-12T12:00:00Z", "failures": [], "repos": []}
-        page = progress.render_html(report, "R & D build progress")
-        self.assertIn("<title>R &amp; D build progress</title>", page)
-        self.assertIn("<h1>R &amp; D build progress</h1>", page)
-        self.assertIn("<title>Build progress</title>", progress.render_html(report))
+        self.assertEqual(progress.repo_page_title({"title": "Homeport Health platform"}), "Homeport Health platform build progress")
+        report = {"date": "2026-10-12", "generated_at": "2026-10-12T12:00:00Z", "failures": [], "repos": [],
+                  "window": {"days": 7, "tz": "UTC", "start": "2026-10-05T12:00:00Z", "end": "2026-10-12T12:00:00Z"}}
+        html_page = progress.page.render_html(report, "R & D build progress")
+        self.assertIn("<title>R &amp; D build progress</title>", html_page)
+        self.assertIn("<title>Build progress</title>", progress.page.render_html(report))
 
 
 class AssignModulesTest(unittest.TestCase):
@@ -387,6 +393,115 @@ class FoundationForUnlinkedPrsTest(unittest.TestCase):
         r = progress.analyze_repo(dict(entry, unattributedIsExpected=True), Fake(), NOW, False)
         self.assertEqual({m["id"]: m["prs_merged_day"] for m in r["modules"]}, {"M00": 0, "M01": 1})  # the PR stays in its module
         self.assertEqual(r["warnings"], [])
+
+
+class WindowTest(unittest.TestCase):
+    def test_seven_days_same_time_of_day(self):
+        now = dt.datetime(2026, 10, 15, 18, 45, tzinfo=UTC)  # Thursday 11:45 PDT
+        start = progress.window_start(now)
+        self.assertEqual(start, dt.datetime(2026, 10, 8, 18, 45, tzinfo=UTC))
+        self.assertEqual(now - start, dt.timedelta(days=7))
+
+    def test_window_keeps_clock_time_across_dst_change(self):
+        now = dt.datetime(2026, 11, 2, 19, 0, tzinfo=UTC)  # Mon 11:00 PST, after the 1 Nov change
+        start = progress.window_start(now)
+        local = start.astimezone(progress.ZoneInfo("America/Los_Angeles"))
+        self.assertEqual((local.month, local.day, local.hour), (10, 26, 11))  # 11:00 PDT, not Monday-to-today
+
+    def test_two_windows_do_not_overlap(self):
+        now = dt.datetime(2026, 10, 15, 18, 45, tzinfo=UTC)
+        w1 = progress.window_start(now)
+        self.assertEqual(progress.window_start(w1), dt.datetime(2026, 10, 1, 18, 45, tzinfo=UTC))
+
+
+def mod(i, n, started, done, w_started, w_done, name=None):
+    return {"id": i, "name": name or f"Mod {i}", "issues": {"total": n, "closed": done, "done": done, "started": started, "open": n - done},
+            "week": {"started": w_started, "done": w_done, "total": n}, "pct": 0, "delta_day": 1.0, "delta_week": 2.0, "prs_merged_week": 2}
+
+
+def report_for(mods, has_code=False):
+    summary = {"pct": 50.0, "done_pct": 25.0, "delta_day": 1.0, "delta_week": 2.0, "done_delta_day": 0.0, "prs_merged_week": 7,
+               "prs_merged_prev_week": 4, "prs_merged_day": 1, "prs_open": 0, "prs_per_day_week": 1.0, "pct_points_per_pr_week": 0.5}
+    return {"date": "2026-10-12", "generated_at": "2026-10-12T19:00:00Z", "window": WINDOW, "failures": [],
+            "repos": [{"repo": "o/r", "title": "Ranch Rides", "has_code_columns": has_code, "warnings": [], "summary": summary, "modules": mods}]}
+
+
+class LayoutTest(unittest.TestCase):
+    MODS = [mod("9.1", 10, 9, 9, 5, 4, "Accounts"), mod("9.2", 10, 4, 1, 2, 0, "Orders"), mod("9.3", 10, 0, 0, 0, 0, "Reports")]
+
+    def page(self, notes=None):
+        return progress.page.render_html(report_for(self.MODS), "Ranch Rides build progress", notes)
+
+    def test_sections_in_order(self):
+        h = self.page()
+        marks = ["class=\"kpis\"", "Module by module", "Moved most since", "Furthest behind", "Biggest untouched gaps", "<h2>Near done", "How to read this"]
+        pos = [h.index(m) for m in marks]
+        self.assertEqual(pos, sorted(pos))
+        self.assertLess(h.index("context"), h.index("class=\"kpis\""))  # plain-language paragraph before the tiles
+
+    def test_warnings_between_modules_and_notes_and_tight(self):
+        rep = report_for(self.MODS)
+        rep["repos"][0]["warnings"] = ["3 issue(s) labelled x", "second"]
+        notes = {"o-r": {"checked": True, "intro": "i", "modules": {"Accounts": [{"text": "t", "evidence": []}]}}}
+        h = progress.page.render_html(rep, "T", notes)
+        self.assertLess(h.index("Module by module"), h.index("labeled x"))
+        self.assertLess(h.index("labeled x"), h.index("in plain terms"))
+        self.assertNotIn("labelled", h)
+        self.assertEqual(h.count('class="note warn warns"'), 1)  # one tight block, not a page-level gap per line
+
+    def test_change_colors_green_above_zero_red_otherwise(self):
+        P = progress.page
+        self.assertIn('class="up">+5%', P.chg(10, 15))
+        self.assertIn('class="down">0%', P.chg(10, 10))
+        self.assertIn('class="down">\u22122%', P.chg(10, 8))
+        self.assertIn('class="up">+1%', P.dpt(0.6))
+        self.assertIn('class="down">0%', P.dpt(0.0))
+        self.assertIn('class="down">\u22121%', P.dpt(-1.0))
+        self.assertNotIn('up', P.dpt(0.4))  # rounds to 0, so red
+
+    def test_row_has_was_bar_above_now_bar_and_state(self):
+        h = self.page()
+        self.assertLess(h.index("pb was"), h.index("pb now"))
+        self.assertIn("Near done</span>", h)   # Accounts: 90% done
+        self.assertIn("Early</span>", h)       # Reports: nothing started
+        self.assertIn("In progress</span>", h) # Orders
+        self.assertIn("+50%", h)
+
+    def test_still_to_be_built_wording(self):
+        h = self.page()
+        self.assertIn("still to be built (", h)
+        self.assertNotIn("not found", h)
+
+    def test_light_and_dark_and_no_em_dash(self):
+        h = self.page({"o-r": {"checked": True, "intro": "Accounts moved \u2014 a lot.", "modules": {"Accounts": [{"text": "Sign in \u2014 now works", "evidence": ["PR #1"]}]},
+                               "coming": [{"module": "Orders", "text": "Checkout", "evidence": []}]}})
+        self.assertIn("prefers-color-scheme:dark", h)
+        self.assertIn('data-theme="dark"', h)
+        self.assertNotIn("\u2014", h)
+
+    def test_unchecked_notes_never_render(self):
+        h = self.page({"o-r": {"checked": False, "intro": "UNCHECKED CLAIM", "modules": {"Accounts": [{"text": "X", "evidence": []}]}}})
+        self.assertNotIn("UNCHECKED CLAIM", h)
+        self.assertNotIn("in plain terms", h)
+
+    def test_checked_notes_and_coming_render(self):
+        h = self.page({"o-r": {"checked": True, "intro": "Riders can sign in.", "modules": {"Accounts": [{"text": "Sign in works.", "evidence": ["PR #1"]}]},
+                               "coming": [{"module": "Orders", "text": "Checkout.", "evidence": []}]}})
+        self.assertIn("What changed in the last 7 days, in plain terms", h)
+        self.assertIn("Riders can sign in.", h)
+        self.assertIn("Coming next", h)
+
+    def test_window_label_in_page(self):
+        h = self.page()
+        self.assertIn("last 7 days at the same time of day", h)
+        self.assertIn("never Monday to today", h)
+
+    def test_per_repo_pages_written(self):
+        with tempfile.TemporaryDirectory() as d:
+            pages = progress.write_pages(report_for(self.MODS), Path(d), {})
+            self.assertEqual(pages[0][0], "Ranch Rides build progress")
+            self.assertTrue(pages[0][2].is_file())
+            self.assertIn("<title>Ranch Rides build progress</title>", pages[0][2].read_text())
 
 
 if __name__ == "__main__":
