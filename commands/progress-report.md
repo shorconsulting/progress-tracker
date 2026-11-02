@@ -1,7 +1,7 @@
 ---
 description: Build-progress report by module across your active repositories (last 7 days at the same time of day), published as one artifact per repository plus an overview
 argument-hint: "[--only owner/repo,...] [--skip owner/repo,...]"
-allowed-tools: Bash(python3 *), Bash(git *), Bash(gh *), Read, Write, Agent, Artifact
+allowed-tools: Bash(python3 *), Bash(python *), Bash(git *), Bash(gh *), Read, Write, Agent, Artifact
 ---
 
 Produce the build-progress report and publish it as one artifact per repository (each with its own stable URL, so it
@@ -25,8 +25,9 @@ never Monday to today. The 1-day change is a secondary figure.
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/progress.py" report $ARGUMENTS
    ```
 
-   It prints a markdown summary, the paths of the overview `report.html` and `report.json` (under
-   `~/.claude/progress-tracker/out/<date>/`), and one line per repository:
+   Where `python3` is not installed (Windows), use `python` for this and step 4. It prints a markdown summary, the
+   paths of the overview `report.html` and `report.json` (under `~/.claude/progress-tracker/out/<date>/`, with a copy
+   in `out/latest/`), and one line per repository:
    `repo-html: <owner/repo> | <artifact title> | <path>`. It needs GitHub read access through `gh` or a `GH_TOKEN` /
    `GITHUB_TOKEN`, and a local checkout of each repository for the frontend / backend / wiring columns (the current
    directory when it is a clone, else a blobless clone under `~/.claude/progress-tracker/repos/`). If a repository
@@ -69,11 +70,13 @@ never Monday to today. The 1-day change is a secondary figure.
 5. Publish each `repo-html:` page as its own artifact, using the artifact title printed on that line. Call the
    Artifact tool with `action: "list"` once and, for each page, look for an artifact with exactly that title; when one
    exists, publish to its `url` so the link stays the same day to day (read it first if this session has not
-   published it). Otherwise publish a new one with `icon: "chart"` and the description
+   published it). Otherwise, when an artifact is titled `Build progress` (the name versions before 0.8.6 used) and
+   reading it shows it holds only this repository, publish to its `url`, which keeps the old link. Otherwise publish
+   a new one with `icon: "chart"` and the description
    `Build progress by module for <owner/repo>, last 7 days`. Never put two repositories on one artifact URL, and never
    reuse the overview artifact for a repository page. When more than one repository ran, also publish the overview
-   `report.html` under the title `Build progress`. With one repository, skip the overview. For a test run, use a new
-   title (for example `Build progress: <repo title> (test)`) so no team's existing page is overwritten.
+   `report.html` under the title `Build progress`, to an artifact holding more than one repository or a new one. With
+   one repository, skip the overview. For a test run, use a new title (for example `<Title> build progress (test)`) so no team's existing page is overwritten.
 
 6. Reply with the markdown summary the script printed followed by one artifact link per repository, then the overview
    link if published, plus one line on anything the fact-check removed. Keep the module order as printed. If the

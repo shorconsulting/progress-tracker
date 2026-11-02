@@ -76,6 +76,13 @@ def load_config() -> dict:
     with open(CONFIG_PATH, encoding="utf-8") as f:
         cfg = json.load(f)
     cfg.setdefault("repos", [])
+    # a setting added to the plugin default reaches existing installs: keys an entry lacks are filled in from the
+    # default entry for the same repo; keys the user set are never overwritten
+    with open(DEFAULT_CONFIG, encoding="utf-8") as f:
+        defaults = {r["repo"].lower(): r for r in json.load(f).get("repos", [])}
+    for r in cfg["repos"]:
+        for k, v in defaults.get(r["repo"].lower(), {}).items():
+            r.setdefault(k, v)
     return cfg
 
 
@@ -143,7 +150,7 @@ class GitHub:
         self.mode = None
 
     def _gh(self, path: str) -> list | dict:
-        p = subprocess.run([self.gh, "api", path], capture_output=True, text=True)
+        p = subprocess.run([self.gh, "api", path], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if p.returncode != 0:
             raise RuntimeError(p.stderr.strip()[:300])
         return json.loads(p.stdout)
@@ -190,7 +197,7 @@ class GitHub:
 # ----------------------------------------------------------------------------- local checkout
 
 def run_git(repo: Path, *args: str) -> str:
-    p = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    p = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if p.returncode != 0:
         raise RuntimeError(p.stderr.strip()[:300])
     return p.stdout
@@ -230,7 +237,7 @@ def locate_checkout(full: str, allow_clone: bool, local_path: str | None = None)
     url = f"https://github.com/{full}.git"
     try:
         subprocess.run(["git", "clone", "--quiet", "--filter=blob:none", url, str(cache)],
-                       check=True, capture_output=True, text=True)
+                       check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
         return cache
     except subprocess.CalledProcessError as e:
         log(f"{full}: clone failed: {e.stderr.strip()[:200]}")
@@ -283,7 +290,7 @@ class Tree:
 
     def grep_files(self, pattern: str, pathspec: str) -> list[str]:
         p = subprocess.run(["git", "-C", str(self.repo), "grep", "-l", "-E", pattern, self.ref, "--", pathspec],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
         return [ln.split(":", 1)[1] for ln in p.stdout.splitlines() if ":" in ln] if p.returncode == 0 else []
 
     def read(self, path: str) -> str:
@@ -600,7 +607,7 @@ def ensure_labels(gh: GitHub, full: str, names: list[str], warnings: list[str]) 
             warnings.append(f"label '{name}' is missing and `gh` is not installed to create it")
             continue
         r = subprocess.run([gh.gh, "label", "create", name, "-R", full, "--color", color, "--description", desc],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
         if r.returncode == 0:
             log(f"{full}: created label '{name}'")
         else:
@@ -612,7 +619,7 @@ def apply_label(gh: GitHub, full: str, issue: dict, name: str, warnings: list[st
     if not WRITE_LABELS or not gh.gh:
         return False
     r = subprocess.run([gh.gh, "issue", "edit", str(issue["number"]), "-R", full, "--add-label", name],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
     time.sleep(0.25)
     if r.returncode != 0:
         warnings.append(f"could not label #{issue['number']} '{name}': {r.stderr.strip()[:100]}")
@@ -1127,7 +1134,7 @@ def repo_slug(full: str) -> str:
 
 
 def repo_page_title(r: dict) -> str:
-    return f"Build progress: {r['title']}"
+    return f"{r['title']} build progress"
 
 
 def load_notes(notes_dir: str | None) -> dict:
@@ -1260,4 +1267,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    # the summary carries Δ, ✓ and ▲; a Windows console defaults to cp1252, which cannot print them
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     sys.exit(main())

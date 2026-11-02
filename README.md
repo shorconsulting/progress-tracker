@@ -26,11 +26,15 @@ In a terminal Claude Code session:
 Answer `y` to add the marketplace and pick the user scope. The plugin needs `python3`, `git`, and GitHub read
 access (the `gh` CLI, or `GH_TOKEN` / `GITHUB_TOKEN` in the environment).
 
+Settings in the plugin's `config/repos.default.json` reach every install: on first run it is copied to
+`~/.claude/progress-tracker/repos.json`, and on later runs any setting a repository's entry lacks is filled in from
+the default entry for the same repository (settings you changed are kept).
+
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `/progress-report [--only a/b,c/d] [--skip a/b]` | Builds the report, drafts and fact-checks the plain-terms notes, and publishes one `Build progress: <repo title>` artifact per repository (stable URLs), plus the `Build progress` overview when more than one repo ran |
+| `/progress-report [--only a/b,c/d] [--skip a/b]` | Builds the report, drafts and fact-checks the plain-terms notes, and publishes one `<Title> build progress` artifact per repository (stable URLs), plus the `Build progress` overview when more than one repo ran |
 | `/progress-repos list` | Shows the repositories in the config and whether each is on |
 | `/progress-repos enable owner/repo` / `disable owner/repo` | Turns a repository on or off for the daily run |
 | `/progress-repos add owner/repo [--title T] [--modules NAME]` | Adds a repository (enabled) |

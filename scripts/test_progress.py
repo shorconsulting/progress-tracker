@@ -202,6 +202,32 @@ class ReposConfig(unittest.TestCase):
         self.assertEqual(progress.main(["repos", "enable", "not/there"]), 1)
         self.assertEqual(progress.main(["repos", "add", "bad name"]), 2)
 
+    def test_default_settings_reach_an_existing_install_without_overwriting(self):
+        home = Path(tempfile.mkdtemp(prefix="pt-cfg-"))
+        default = home / "default.json"
+        default.write_text('{"repos": [{"repo": "acme/widgets", "title": "Default", "foundationForUnlinkedPrs": true}]}',
+                           encoding="utf-8")
+        (home / "repos.json").write_text('{"repos": [{"repo": "Acme/Widgets", "title": "Mine", "enabled": false}]}',
+                                         encoding="utf-8")
+        progress.HOME, progress.CONFIG_PATH, saved = home, home / "repos.json", progress.DEFAULT_CONFIG
+        progress.DEFAULT_CONFIG = default
+        try:
+            r = progress.find_repo(progress.load_config(), "acme/widgets")
+        finally:
+            progress.DEFAULT_CONFIG = saved
+        self.assertTrue(r["foundationForUnlinkedPrs"])
+        self.assertEqual((r["title"], r["enabled"]), ("Mine", False))
+
+
+class RepoPages(unittest.TestCase):
+    def test_each_repository_gets_a_page_titled_after_it(self):
+        self.assertEqual(progress.repo_page_title({"title": "Homeport Health platform"}), "Homeport Health platform build progress")
+        report = {"date": "2026-10-12", "generated_at": "2026-10-12T12:00:00Z", "failures": [], "repos": [],
+                  "window": {"days": 7, "tz": "UTC", "start": "2026-10-05T12:00:00Z", "end": "2026-10-12T12:00:00Z"}}
+        html_page = progress.page.render_html(report, "R & D build progress")
+        self.assertIn("<title>R &amp; D build progress</title>", html_page)
+        self.assertIn("<title>Build progress</title>", progress.page.render_html(report))
+
 
 class AssignModulesTest(unittest.TestCase):
     def test_infers_from_text_pr_and_files_and_lists_the_rest(self):
@@ -404,7 +430,7 @@ class LayoutTest(unittest.TestCase):
     MODS = [mod("9.1", 10, 9, 9, 5, 4, "Accounts"), mod("9.2", 10, 4, 1, 2, 0, "Orders"), mod("9.3", 10, 0, 0, 0, 0, "Reports")]
 
     def page(self, notes=None):
-        return progress.page.render_html(report_for(self.MODS), "Build progress: Ranch Rides", notes)
+        return progress.page.render_html(report_for(self.MODS), "Ranch Rides build progress", notes)
 
     def test_sections_in_order(self):
         h = self.page()
@@ -473,9 +499,9 @@ class LayoutTest(unittest.TestCase):
     def test_per_repo_pages_written(self):
         with tempfile.TemporaryDirectory() as d:
             pages = progress.write_pages(report_for(self.MODS), Path(d), {})
-            self.assertEqual(pages[0][0], "Build progress: Ranch Rides")
+            self.assertEqual(pages[0][0], "Ranch Rides build progress")
             self.assertTrue(pages[0][2].is_file())
-            self.assertIn("<title>Build progress: Ranch Rides</title>", pages[0][2].read_text())
+            self.assertIn("<title>Ranch Rides build progress</title>", pages[0][2].read_text())
 
 
 if __name__ == "__main__":
