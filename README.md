@@ -1,11 +1,18 @@
 # progress-tracker
 
-A Claude Code plugin that produces a daily build-progress report across your active repositories: overall %
-complete with 1-day and 7-day deltas, PR throughput and efficiency, and a per-module table (fixed order M00,
-M01, M02 ...) with % complete and frontend / backend / frontend-to-backend wiring status. Everything lands in one
-artifact.
+A Claude Code plugin that reports build progress across your active repositories in the build-status layout.
+Each repository gets its own page: a plain-language summary of the latest progress first, then tiles with the 7-day
+change, a module table showing the bar from 7 days ago above today's bar (percentages, change, and a state label of
+Near done / In progress / Early), Moved most and Furthest behind, Biggest untouched gaps and Near done, "What changed
+in the last 7 days, in plain terms" (per-module bullets checked against the merged PRs by a second agent), Coming
+next, and How to read this. The tracker's own measures stay: % started and % done per module, frontend / backend /
+wiring status, PR throughput, and the 1-day change as a secondary figure. Light and dark themes.
 
-It stores nothing between runs: deltas are recomputed from issue `closed_at`, PR `merged_at` and git first-add
+The window is the last 7 days at the same time of day (never Monday to today). Published as one artifact per
+repository (own URL each, so a repository can be shared with its partner alone) plus an overview when more than one
+repository ran.
+
+It stores nothing between runs: figures are recomputed from issue `closed_at`, PR `merged_at` and git first-add
 dates, so it gives the same answer from whichever Claude account runs it that day.
 
 ## Install (any account)
@@ -23,7 +30,7 @@ access (the `gh` CLI, or `GH_TOKEN` / `GITHUB_TOKEN` in the environment).
 
 | Command | What it does |
 |---|---|
-| `/progress-report [--only a/b,c/d] [--skip a/b]` | Builds today's report and publishes it as the `Build progress` artifact |
+| `/progress-report [--only a/b,c/d] [--skip a/b]` | Builds the report, drafts and fact-checks the plain-terms notes, and publishes one `Build progress: <repo title>` artifact per repository (stable URLs), plus the `Build progress` overview when more than one repo ran |
 | `/progress-repos list` | Shows the repositories in the config and whether each is on |
 | `/progress-repos enable owner/repo` / `disable owner/repo` | Turns a repository on or off for the daily run |
 | `/progress-repos add owner/repo [--title T] [--modules NAME]` | Adds a repository (enabled) |
@@ -131,3 +138,19 @@ config/modules/ranch-rides.json     module names for 9.x (no code probes)
 ```
 
 Tests: `python3 -m unittest discover -s tools/claude-plugins/progress-tracker/scripts -p 'test_*.py'` (12 cases).
+
+## Script
+
+```
+python3 scripts/progress.py report [--only a/b] [--skip a/b] [--notes-dir DIR] [--out DIR]
+python3 scripts/progress.py render report.json --notes-dir DIR     # re-render after the notes are checked
+python3 scripts/test_progress.py
+```
+
+Notes are `<repo slug>.json` files in `--notes-dir` (`intro`, `modules`, `coming`, `checked`); a file without
+`"checked": true` is never rendered.
+
+## Changes
+
+- 0.9.0: report rebuilt in the build-status layout; 7-day window at the same time of day; fact-checked plain-terms
+  notes and Coming next; one page per repository (from the HomePort copy, commit 20b9fd83).

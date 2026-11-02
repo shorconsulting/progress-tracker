@@ -9,7 +9,8 @@ History needs no stored state: the 1-day and 7-day comparison points are recompu
 `closed_at`, `merged_at` and git first-add dates, so any account can run the report on any day.
 
 Usage:
-  progress.py report [--only owner/repo,...] [--skip owner/repo,...] [--out DIR] [--no-clone] [--json]
+  progress.py report [--only owner/repo,...] [--skip owner/repo,...] [--out DIR] [--notes-dir DIR] [--no-clone] [--json]
+  progress.py render report.json [--notes-dir DIR] [--out DIR]
   progress.py repos list|enable|disable|add|remove [owner/repo] [--title T] [--modules NAME]
   progress.py config-path
 """
@@ -30,6 +31,10 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import page  # noqa: E402
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 HOME = Path(os.environ.get("PROGRESS_TRACKER_HOME") or (Path.home() / ".claude" / "progress-tracker"))
@@ -40,6 +45,15 @@ MODULES_DIRS = [HOME / "modules", PLUGIN_ROOT / "config" / "modules"]
 DAY = dt.timedelta(days=1)
 WEEK = dt.timedelta(days=7)
 UTC = dt.timezone.utc
+
+
+DEFAULT_TZ = "America/Los_Angeles"
+
+
+def window_start(now: dt.datetime, days: int = 7, tz: str = DEFAULT_TZ) -> dt.datetime:
+    """The comparison point: `days` days back at the same local time of day (David S: build status = last 7 days
+    at the same time of day, never Monday to today). Wall-clock arithmetic, so a DST change keeps the clock time."""
+    return (now.astimezone(ZoneInfo(tz)) - dt.timedelta(days=days)).astimezone(UTC)
 
 
 def log(msg: str) -> None:
@@ -951,7 +965,9 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
         if moved:
             log(f"{full}: counted {moved} PR(s) that name no tracked issue under {FOUNDATION}")
 
-    points = {"now": now, "day": now - DAY, "week": now - WEEK, "two_weeks": now - 2 * WEEK}
+    tz = entry.get("timezone") or DEFAULT_TZ
+    week_start = window_start(now, 7, tz)
+    points = {"now": now, "day": now - DAY, "week": week_start, "two_weeks": window_start(week_start, 7, tz)}
     counts = {k: issue_counts(issues, t, resolver, merged_for, strict=True, started_for=started_for) for k, t in points.items()}
     closed_counts = {k: issue_counts(issues, points[k], resolver, closed_for, strict=True) for k in ("now", "day")}
 
@@ -994,7 +1010,9 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
             "name": "Foundation / unattributed" if mid == FOUNDATION else module_names.get(mid, mid),
             "issues": {"total": c_now["total"], "closed": c_now["closed"], "done": c_now["done"],
                        "started": c_now["started"], "open": c_now["total"] - c_now["done"]},
+            "week": {"started": c_week["started"], "done": c_week["done"], "total": c_week["total"]},
             "pct": p_now,
+            "pct_week": p_week,
             "done_pct": pct(c_now["done"], c_now["total"]),
             "delta_day": None if p_now is None or p_day is None else round(p_now - p_day, 1),
             "delta_week": None if p_now is None or p_week is None else round(p_now - p_week, 1),
@@ -1043,7 +1061,12 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
     }
     return {"repo": full, "title": entry.get("title") or full, "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "has_code_columns": tree is not None, "warnings": warnings, "summary": summary, "modules": rows,
-            "inferred_links": inferred}
+            "inferred_links": inferred,
+            "window_start": points["week"].strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "merged_prs": [{"number": p["number"], "title": p.get("title"), "url": p.get("html_url"), "merged_at": p["merged_at"],
+                            "modules": pr_mods[p["number"]] or [FOUNDATION]}
+                           for p in sorted(merged, key=lambda p: p["merged_at"])
+                           if (parse_ts(p["merged_at"]) or now) > points["week"]]}
 
 
 # ----------------------------------------------------------------------------- rendering
@@ -1099,109 +1122,48 @@ def render_markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
-HTML_HEAD = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Build progress</title>
-<style>
-:root{--bg:#f7f6f2;--card:#ffffff;--ink:#1d1f1b;--muted:#6b6f66;--line:#e2e0d8;--accent:#1f6f5f;--good:#2b7a4b;--warn:#b7791f;--bad:#b23a3a;--bar:#d9e8e2;--barfill:#1f6f5f;--chip:#eef0ea}
-@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15170f;--card:#1e2117;--ink:#ecebe3;--muted:#9ea294;--line:#2d3127;--accent:#7cc4ad;--good:#7fcf9a;--warn:#e0b05a;--bad:#e07a7a;--bar:#2a3a33;--barfill:#7cc4ad;--chip:#262a1f}}
-:root[data-theme="dark"]{--bg:#15170f;--card:#1e2117;--ink:#ecebe3;--muted:#9ea294;--line:#2d3127;--accent:#7cc4ad;--good:#7fcf9a;--warn:#e0b05a;--bad:#e07a7a;--bar:#2a3a33;--barfill:#7cc4ad;--chip:#262a1f}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-main{max-width:1180px;margin:0 auto;padding:24px 16px 48px}h1{font-size:22px;margin:0 0 4px}h2{font-size:18px;margin:32px 0 12px}
-.sub{color:var(--muted);margin:0 0 20px}.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:12px 0 20px}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}.tile .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
-.tile .v{font-size:24px;font-weight:600;margin-top:2px}.tile .d{font-size:13px;color:var(--muted)}.up{color:var(--good)}.down{color:var(--bad)}.flat{color:var(--muted)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:auto}table{border-collapse:collapse;width:100%;min-width:760px}
-th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;background:var(--card)}
-td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}tr:last-child td{border-bottom:0}
-.bar{display:inline-block;width:90px;height:8px;background:var(--bar);border-radius:4px;vertical-align:middle;margin-right:8px;overflow:hidden}.bar i{display:block;height:100%;background:var(--barfill)}
-.state{display:inline-block;min-width:64px;text-align:center;border-radius:999px;padding:1px 8px;font-size:12px;background:var(--chip)}.s-done{color:var(--good)}.s-partial{color:var(--warn)}.s-none{color:var(--bad)}.s-na{color:var(--muted)}
-.warn{color:var(--warn);font-size:13px;margin:0 0 10px}details{margin-top:8px;color:var(--muted);font-size:13px}code{font-size:13px;background:var(--chip);padding:1px 5px;border-radius:4px}
-.legend{color:var(--muted);font-size:13px;margin:10px 0 0}
-</style></head><body><main>
-"""
+def repo_slug(full: str) -> str:
+    return page.slug(full)
 
 
-def cls_delta(v: float | None) -> str:
-    if v is None or abs(v) < 0.05:
-        return "flat"
-    return "up" if v > 0 else "down"
+def repo_page_title(r: dict) -> str:
+    return f"Build progress: {r['title']}"
 
 
-def tile(k: str, v: str, d: str = "", dcls: str = "flat") -> str:
-    return f'<div class="tile"><div class="k">{html.escape(k)}</div><div class="v">{html.escape(v)}</div><div class="d {dcls}">{html.escape(d)}</div></div>'
+def load_notes(notes_dir: str | None) -> dict:
+    """`<dir>/<repo slug>.json` per repository: the fact-checked week file (only `"checked": true` files render)."""
+    out = {}
+    for f in Path(notes_dir).glob("*.json") if notes_dir else []:
+        try:
+            out[f.stem] = json.loads(f.read_text(encoding="utf-8"))
+        except ValueError:
+            log(f"ignoring unreadable notes file {f}")
+    return out
 
 
-def state_chip(cell: dict | None, prev: dict | None = None) -> str:
-    if not cell:
-        return '<span class="state s-na">–</span>'
-    st = cell["state"]
-    label = {"done": "done", "partial": "partial", "none": "none", "n/a": "n/a"}[st]
-    if cell.get("ratio") is not None and st == "partial":
-        label = f"{round(cell['ratio'] * 100)}%"
-    arrow = ""
-    if prev and prev.get("ratio") is not None and cell.get("ratio") is not None and cell["ratio"] > prev["ratio"] + 1e-9:
-        arrow = ' <span class="up" title="improved over the last 7 days">▲</span>'
-    title = html.escape("; ".join(cell.get("detail", [])))
-    return f'<span class="state s-{st.replace("/", "")}" title="{title}">{label}</span>{arrow}'
-
-
-def render_html(report: dict) -> str:
-    parts = [HTML_HEAD, f"<h1>Build progress</h1><p class=\"sub\">{html.escape(report['date'])} · "
-             f"{len(report['repos'])} active {'repository' if len(report['repos']) == 1 else 'repositories'} · "
-             "% started = tracked requirements (issues) with at least one PR opened or merged / all tracked requirements, per module; done = merged work that is also closed or labelled done; Done 1d = requirements closed (or labelled done) in the last 24h with their work merged, dated by the close; deltas are recomputed from GitHub timestamps.</p>"]
-    if len(report["repos"]) > 1:
-        parts.append("<h2>All active builds</h2><div class=\"card\"><table><thead><tr><th>Repository</th><th class=num>% started</th><th class=num>% done</th>"
-                     "<th class=num>Δ 1d</th><th class=num>Δ 7d</th><th class=num>Started 7d</th><th class=num>PRs merged 7d</th>"
-                     "<th class=num>PRs/day</th><th class=num>pt / PR</th></tr></thead><tbody>")
-        for r in report["repos"]:
-            s = r["summary"]
-            parts.append(f"<tr><td>{html.escape(r['title'])}<br><code>{html.escape(r['repo'])}</code></td><td class=num>{fmt_pct(s['pct'])}</td><td class=num>{fmt_pct(s['done_pct'])}</td>"
-                         f"<td class='num {cls_delta(s['delta_day'])}'>{fmt_delta(s['delta_day'])}</td><td class='num {cls_delta(s['delta_week'])}'>{fmt_delta(s['delta_week'])}</td>"
-                         f"<td class=num>{s['closed_week']}</td><td class=num>{s['prs_merged_week']}</td><td class=num>{s['prs_per_day_week']}</td>"
-                         f"<td class=num>{s['pct_points_per_pr_week'] if s['pct_points_per_pr_week'] is not None else '–'}</td></tr>")
-        parts.append("</tbody></table></div>")
+def write_pages(report: dict, out: Path, notes: dict) -> list:
+    """The overview page plus one standalone page per repository (20b9fd83: each can be shared on its own URL)."""
+    (out / "report.html").write_text(page.render_html(report, "Build progress", notes), encoding="utf-8")
+    pages = []
     for r in report["repos"]:
-        s = r["summary"]
-        parts.append(f"<h2>{html.escape(r['title'])} <code>{html.escape(r['repo'])}</code></h2>")
-        for w in r["warnings"]:
-            parts.append(f"<p class=warn>{html.escape(w)}</p>")
-        wk_trend = s["prs_merged_week"] - s["prs_merged_prev_week"]
-        parts.append('<div class="tiles">' +
-                     tile("Started", fmt_pct(s["pct"]), f"{s['issues_started']} of {s['issues_total']} requirements have a PR started") +
-                     tile("Done", fmt_pct(s["done_pct"]), f"{s['issues_done']} of {s['issues_total']} merged and marked done") +
-                     tile("Δ 1 day", fmt_delta(s["delta_day"]), f"{s['closed_day']} newly started", cls_delta(s["delta_day"])) +
-                     tile("Done 1 day", fmt_delta(s.get("done_delta_day")), f"{s.get('done_day', 0)} closed or labelled done in 24h", cls_delta(s.get("done_delta_day"))) +
-                     tile("Δ 7 days", fmt_delta(s["delta_week"]), f"{s['closed_week']} newly started (prev week {s['closed_prev_week']})", cls_delta(s["delta_week"])) +
-                     tile("PRs merged 7d", str(s["prs_merged_week"]), f"{fmt_int_delta(wk_trend)} vs previous week · {s['prs_merged_day']} in 24h", cls_delta(wk_trend)) +
-                     tile("Throughput", f"{s['prs_per_day_week']} PR/day", f"{s['issues_per_pr_week'] if s['issues_per_pr_week'] is not None else '–'} issues per PR") +
-                     tile("Yield", f"{s['pct_points_per_pr_week'] if s['pct_points_per_pr_week'] is not None else '–'} pt/PR",
-                          f"{s['prs_open']} PRs open") + "</div>")
-        code_cols = r["has_code_columns"]
-        parts.append("<div class=\"card\"><table><thead><tr><th>Module</th><th>% started</th><th class=num>Δ 1d</th><th class=num>Δ 7d</th>"
-                     "<th class=num>Started / total</th><th class=num>Done / total</th><th class=num>Done 1d</th><th class=num>Started 7d</th><th class=num>PRs 1d</th><th class=num>PRs 7d</th><th class=num>Open PRs</th>"
-                     + ("<th>Frontend</th><th>Backend</th><th>FE → BE wired</th>" if code_cols else "") + "</tr></thead><tbody>")
-        for m in r["modules"]:
-            p = m["pct"] or 0
-            parts.append(f"<tr><td><strong>{html.escape(m['id'])}</strong> {html.escape(m['name'])}</td>"
-                         f"<td><span class=bar><i style=\"width:{p:.0f}%\"></i></span>{fmt_pct(m['pct'])}</td>"
-                         f"<td class='num {cls_delta(m['delta_day'])}'>{fmt_delta(m['delta_day'], '')}</td>"
-                         f"<td class='num {cls_delta(m['delta_week'])}'>{fmt_delta(m['delta_week'], '')}</td>"
-                         f"<td class=num>{m['issues']['started']} / {m['issues']['total']}</td><td class=num>{m['issues']['done']} / {m['issues']['total']}</td><td class='num {cls_delta(m.get('done_delta_day'))}'>{fmt_done_day(m)}</td><td class=num>{m['closed_week']}</td>"
-                         f"<td class=num>{m['prs_merged_day']}</td><td class=num>{m['prs_merged_week']}</td><td class=num>{m['prs_open']}</td>")
-            if code_cols:
-                c, cw = m.get("code"), m.get("code_week")
-                for k in ("frontend", "backend", "connection"):
-                    parts.append(f"<td>{state_chip(c.get(k) if c else None, cw.get(k) if cw else None)}</td>")
-            parts.append("</tr>")
-        parts.append("</tbody></table></div>")
-        if code_cols:
-            parts.append("<p class=legend>Frontend: route files present per expected app/route. Backend: middleware domain with a route table (scaffold alone counts half). "
-                         "Wired: an api-client hook exists (half) and is used from the module's apps (full). ▲ marks a column that improved in the last 7 days. Hover a chip for detail.</p>")
-    parts.append(f"<details><summary>About this report</summary>Generated {html.escape(report['generated_at'])} by the progress-tracker plugin. "
-                 "Module order is fixed (M00 = foundation and unattributed work, then module ids ascending). Deltas compare against the same metric recomputed at now−24h and now−7d from issue and PR timestamps and git first-add dates; "
-                 "they do not depend on earlier runs.</details></main></body></html>")
-    return "".join(parts)
+        d = out / "repos" / repo_slug(r["repo"])
+        d.mkdir(parents=True, exist_ok=True)
+        solo = {**report, "repos": [r], "failures": []}
+        (d / "report.html").write_text(page.render_html(solo, repo_page_title(r), notes), encoding="utf-8")
+        pages.append((repo_page_title(r), r["repo"], d / "report.html"))
+    return pages
+
+
+def cmd_render(args: argparse.Namespace) -> int:
+    """Re-render the pages from an existing report.json, e.g. after the notes were drafted and fact-checked."""
+    src = Path(args.json_file)
+    report = json.loads(src.read_text(encoding="utf-8"))
+    out = Path(args.out) if args.out else src.parent
+    pages = write_pages(report, out, load_notes(args.notes_dir))
+    print(f"html: {out / 'report.html'}")
+    for t, repo, path in pages:
+        print(f"repo-html: {repo} | {t} | {path}")
+    return 0
 
 
 # ----------------------------------------------------------------------------- report command
@@ -1229,7 +1191,10 @@ def cmd_report(args: argparse.Namespace) -> int:
         except Exception as e:  # keep the other repos' report
             log(f"{entry['repo']}: FAILED: {e}")
             failures.append({"repo": entry["repo"], "error": str(e)})
+    tz = cfg.get("timezone") or DEFAULT_TZ
     report = {"date": now.strftime("%Y-%m-%d"), "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "window": {"days": 7, "tz": tz, "start": window_start(now, 7, tz).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                         "end": now.strftime("%Y-%m-%dT%H:%M:%SZ")},
               "repos": results, "failures": failures}
     out = Path(args.out) if args.out else HOME / "out" / report["date"]
     out.mkdir(parents=True, exist_ok=True)
@@ -1242,18 +1207,22 @@ def cmd_report(args: argparse.Namespace) -> int:
             w.writerow(["repo", "pr", "pr_title", "issue", "issue_title", "how", "score", "merged"])
             for repo, x in links:
                 w.writerow([repo, x["pr"], x["pr_title"], x["issue"], x["issue_title"], x["how"], x["score"], x["merged"]])
-    (out / "report.html").write_text(render_html(report), encoding="utf-8")
+    pages = write_pages(report, out, load_notes(args.notes_dir))
     (out / "summary.md").write_text(render_markdown(report), encoding="utf-8")
     latest = HOME / "out" / "latest"
     if not args.out:
         latest.mkdir(parents=True, exist_ok=True)
         for name in ("report.json", "report.html", "summary.md"):
             shutil.copy(out / name, latest / name)
+        if (out / "repos").is_dir():
+            shutil.copytree(out / "repos", latest / "repos", dirs_exist_ok=True)
     if args.json:
         print(json.dumps(report, indent=2))
     else:
         print((out / "summary.md").read_text(encoding="utf-8"))
         print(f"\nhtml: {out / 'report.html'}\njson: {out / 'report.json'}")
+        for t, repo, path in pages:
+            print(f"repo-html: {repo} | {t} | {path}")
         for f in failures:
             print(f"FAILED {f['repo']}: {f['error']}")
     return 1 if failures and not results else 0
@@ -1270,8 +1239,14 @@ def main(argv: list[str] | None = None) -> int:
     rp.add_argument("--mark-merged-done", action="store_true",
                     help="one-off backfill: put the done label on every issue that has merged work, QA label or not")
     rp.add_argument("--no-write", action="store_true", help="read-only: never create labels or label issues")
+    rp.add_argument("--notes-dir", help="folder of fact-checked week files, <repo slug>.json each, shown as the plain-terms section")
     rp.add_argument("--json", action="store_true", help="print the JSON report instead of the markdown summary")
     rp.set_defaults(fn=cmd_report)
+    rd = sub.add_parser("render", help="re-render the pages from a report.json (after the notes are drafted and checked)")
+    rd.add_argument("json_file")
+    rd.add_argument("--notes-dir")
+    rd.add_argument("--out")
+    rd.set_defaults(fn=cmd_render)
     rr = sub.add_parser("repos", help="list or toggle tracked repositories")
     rr.add_argument("action", choices=["list", "enable", "disable", "add", "remove"])
     rr.add_argument("repo", nargs="?")
