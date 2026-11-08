@@ -1,6 +1,6 @@
 {
   "name": "progress-tracker",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Build-progress report by module across your active repositories, in the build-status layout: plain-language summary, 7-day change (same time of day) with a bar from 7 days ago above today's, fact-checked notes on what changed, PR throughput, and frontend / backend / wiring status. One artifact per repository.",
   "author": { "name": "Homeport Health" },
   "keywords": ["progress", "report", "routine", "modules"]

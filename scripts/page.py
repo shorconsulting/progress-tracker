@@ -202,13 +202,14 @@ def repo_sections(r: dict, win: dict, notes: dict | None) -> str:
             f'{plain}\n{coming}')
 
 
-def how_to_read(win: dict, code: bool) -> str:
+def how_to_read(win: dict, code: bool, closed_done: bool = False) -> str:
     a, at = when(win["start"], win["tz"])
     b, bt = when(win["end"], win["tz"])
     return (f'<p>The window is the last 7 days at the same time of day: {e(a)}, {e(at)} to {e(b)}, {e(bt)} ({e(win["tz"])}), never Monday to today. '
             'Every figure is recomputed from GitHub timestamps and git history, so the page needs no earlier run.</p>'
             '<p><b>Started</b> means a pull request has been opened or merged for the requirement. <b>Done</b> means its work is merged and the requirement is closed or labeled done. '
-            '<b>Still to be built</b> means no pull request names it yet. Both bars use today\'s requirement list, so a bar moves only when the work moves. '
+            + ('A requirement closed as completed also counts as done when no pull request ever named it. ' if closed_done else '')
+            + '<b>Still to be built</b> means no pull request names it yet. Both bars use today\'s requirement list, so a bar moves only when the work moves. '
             '"Δ 7 days" is the change in percent done since the earlier date; "Δ 1 day" is the change in percent started in the last 24 hours.</p>'
             f'<p>State pills: Near done is {NEAR_DONE}% or more done; Early is under {EARLY_BELOW}% started; everything else is In progress.'
             + (' Frontend, Backend and Wired come from the code in the repository: route files present, a backend route table, and an API client used by the app. A triangle marks a column that improved in 7 days.' if code else '')
@@ -253,7 +254,7 @@ def render_html(report: dict, title: str = "Build progress", notes: dict | None 
     return (f'<title>{e(title)}</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n'
             f'<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n<link rel="stylesheet" href="{FONTS}">\n'
             f'<style>{CSS}</style>\n<div class="wrap">\n<header><div class="eyebrow">{eyebrow}</div><h1>{e(title)}</h1><p>{e(lede)}</p>{first_intro}</header>\n'
-            f'{fails}{"".join(body)}\n<section class="note"><h2>How to read this</h2>{how_to_read(win, any(r["has_code_columns"] for r in repos))}'
+            f'{fails}{"".join(body)}\n<section class="note"><h2>How to read this</h2>{how_to_read(win, any(r["has_code_columns"] for r in repos), any(r.get("closed_counts_as_done") for r in repos))}'
             f'<p class="muted">Generated {e(report["generated_at"])} by the progress-tracker plugin.</p></section>\n</div>\n')
 
 

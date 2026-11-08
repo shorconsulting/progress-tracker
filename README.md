@@ -83,6 +83,11 @@ The prompt runs the command unattended and ends with the artifact link.
   (wyset, where work lands on main with `Ref #NN` and stories stay open) a default-branch commit citing the
   issue counts too, within `commitLookbackDays`. `trackedIssueLabels` limits the base (`agent:build`, `story`);
   `excludeIssueLabels` drops epics, questions, duplicates and the like.
+  **Aliases:** `issueAliases: {"mention": "\\bAT-(\\d+)(?:\\s*(?:-|to)\\s*(?:AT-)?(\\d+))?", "title": "^AT-(\\d+)\\b"}` reads
+  "AT-59" or "AT-51 to AT-54" in a PR or commit as naming the issues titled "AT-59: ..." (a plan's own numbering). Use a
+  distinctive token: a plain "item 59" also matches other numbered lists and sentences like "not in this change: item 59".
+  **Closed is done:** `closedCountsAsDone: true` counts a requirement closed as completed as done even when no PR named
+  it; the page says so under How to read this.
   **Inferred links:** `inferPrLinks: true` ties PRs that name no issue to the issue they are about (requirement id, else wording) and lists them in `inferred-links.csv`; nothing is written to GitHub.
   **Unlinked PRs to M00:** `foundationForUnlinkedPrs: true` counts every PR that builds no tracked requirement under M00
   rather than in the module its files point to. `unattributedIsExpected: true` keeps placement by files and only drops
