@@ -747,6 +747,41 @@ def _plurality(votes: list[str]) -> str | None:
     return top[0][0] if len(top) == 1 or top[0][1] > top[1][1] else None
 
 
+def label_pr_modules(entry: dict, gh: "GitHub", full: str, prs: list[dict], resolver: "ModuleResolver",
+                     pr_mods: dict[int, list[str]], warnings: list[str], known: set[str] | None = None, limit: int = 300) -> int:
+    """Write the module label (`moduleLabelFormat`) on pull requests whose single module the report already infers
+    (module mention, referenced issue, commit scope, or file rules) but that carry no module label yet, so the
+    placement is permanent on GitHub and not re-derived on every run. Label-sourced repositories only; at most
+    `limit` pull requests per run so a first run on a big repository stays gentle."""
+    fmt = entry.get("moduleLabelFormat")
+    if not (fmt and resolver.source == "labels" and WRITE_LABELS and entry.get("manageLabels", True) and gh.gh):
+        return 0
+    done = 0
+    for p in prs:
+        if done >= limit:
+            break
+        if p.get("state") != "open" and not p.get("merged_at"):
+            continue
+        mods = pr_mods.get(p["number"]) or []
+        if len(mods) != 1 or resolver.from_labels(label_names(p)) or (known and mods[0] not in known):
+            continue
+        digits = re.search(r"(\d+)$", mods[0])
+        if not digits:
+            continue
+        name = fmt.format(n=int(digits.group(1)))
+        r = subprocess.run([gh.gh, "pr", "edit", str(p["number"]), "-R", full, "--add-label", name],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        time.sleep(0.25)
+        if r.returncode != 0:
+            warnings.append(f"could not label PR #{p['number']} '{name}': {r.stderr.strip()[:100]}")
+            continue
+        p.setdefault("labels", []).append({"name": name})
+        done += 1
+    if done:
+        log(f"{full}: labelled {done} pull request(s) with their module")
+    return done
+
+
 def assign_modules(entry: dict, gh: GitHub, full: str, issues: list[dict], resolver: "ModuleResolver",
                    prs_for: dict[int, list[dict]], domain_to_module: dict[str, str],
                    module_names: dict[str, str], warnings: list[str],
@@ -802,6 +837,29 @@ def assign_modules(entry: dict, gh: GitHub, full: str, issues: list[dict], resol
             warnings.append(note)
 
 
+PLANNED_LINE = re.compile(r"^\s*Planned:\s*(\d{4}-\d{2}-\d{2})\s*$", re.M)
+BUILT_BY_LINE = re.compile(r"^\s*Built by:\s*((?:#\d+[\s,;]*(?:and\s*)?)+)", re.M)
+
+
+def backdate_and_backlink(issues: list[dict], prs: list[dict]) -> None:
+    """Two optional lines in an issue body, for requirements filed after their work began (a plan's items, a backfill).
+
+    `Planned: 2026-09-22` counts the issue as filed on that date when it is earlier than `created_at`, so the 1-day and
+    7-day bars include it. `Built by: #911, #914` counts those pull requests as naming the issue, as if each said
+    `Ref #N`, so started and done take the pull requests' own dates rather than the day the issue was filed."""
+    by_pr = {p["number"]: p for p in prs}
+    for it in issues:
+        body = it.get("body") or ""
+        m = PLANNED_LINE.search(body)
+        if m and m.group(1) + "T00:00:00Z" < (it.get("created_at") or "9999"):
+            it["created_at"] = m.group(1) + "T00:00:00Z"
+        m = BUILT_BY_LINE.search(body)
+        for n in (re.findall(r"#(\d+)", m.group(1)) if m else []):
+            p = by_pr.get(int(n))
+            if p is not None:
+                p["body"] = (p.get("body") or "") + f"\nRef #{it['number']}"
+
+
 def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -> dict:
     full = entry["repo"]
     probes = load_probes(entry.get("modules"))
@@ -819,6 +877,7 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
     if (qa_labels or done_labels) and entry.get("manageLabels", True) and WRITE_LABELS:
         ensure_labels(gh, full, sorted(qa_labels | done_labels), warnings)
 
+    backdate_and_backlink(issues, prs)
     resolver = ModuleResolver(entry, issues, full)
     domain_to_module: dict[str, str] = {}
     module_names: dict[str, str] = dict(resolver.names)
@@ -832,12 +891,33 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
     # pull requests
     merged = [p for p in prs if p.get("merged_at")]
     ref_rule = entry.get("issueRefRule") or "keyword"
+    # `issueAliases` lets work name a requirement by a plan's own numbering: {"mention": "\\bAT-(\\d+)(?:\\s*(?:-|to)\\s*(?:AT-)?(\\d+))?",
+    # "title": "^AT-(\\d+)\\b"} reads "AT-59" or "AT-51 to AT-54" as naming the issues titled "AT-59: ..." and so on
+    aliases = entry.get("issueAliases") or {}
+    alias_of: dict[int, int] = {}
+    if aliases:
+        title_re = re.compile(aliases["title"], re.I)
+        for it in issues:
+            m = title_re.match(it.get("title") or "")
+            if m:
+                alias_of[int(m.group(1))] = it["number"]
+    mention_re = re.compile(aliases["mention"], re.I) if alias_of else None
+
+    def refs_in(title: str, body: str) -> set[int]:
+        out = issue_refs(title, body, ref_rule)
+        if mention_re:
+            for m in mention_re.finditer(title + "\n" + body):
+                lo = int(m.group(1))
+                hi = int(m.group(2)) if m.re.groups >= 2 and m.group(2) else lo
+                out.update(alias_of[k] for k in range(lo, min(max(hi, lo), lo + 50) + 1) if k in alias_of)  # ponytail: a range spans at most 50
+        return out
+
     pr_merge: dict[int, dt.datetime] = {}
     unlinked = 0
     prs_for: dict[int, list[dict]] = {}
     for p in merged:
         t = parse_ts(p["merged_at"])
-        refs = [n for n in issue_refs(p.get("title") or "", p.get("body") or "", ref_rule) if n in resolver.by_issue]
+        refs = [n for n in refs_in(p.get("title") or "", p.get("body") or "") if n in resolver.by_issue]
         unlinked += not refs
         for n in refs:
             prs_for.setdefault(n, []).append(p)
@@ -847,14 +927,14 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
     for p in prs:
         if p.get("state") == "open" or p.get("merged_at"):
             t0 = parse_ts(p.get("created_at"))
-            for n in issue_refs(p.get("title") or "", p.get("body") or "", ref_rule):
+            for n in refs_in(p.get("title") or "", p.get("body") or ""):
                 if n in resolver.by_issue and t0 is not None and (n not in pr_start or t0 < pr_start[n]):
                     pr_start[n] = t0
     inferred: list[dict] = []
     if entry.get("inferPrLinks"):
         tracked_issues = [i for i in issues if resolver.is_tracked(i)]
         tracked_nums = {i["number"] for i in tracked_issues}
-        named = lambda p: [n for n in issue_refs(p.get("title") or "", p.get("body") or "", ref_rule) if n in tracked_nums]  # noqa: E731
+        named = lambda p: [n for n in refs_in(p.get("title") or "", p.get("body") or "") if n in tracked_nums]  # noqa: E731
         unnamed = [p for p in prs if (p.get("merged_at") or p.get("state") == "open") and not named(p)]
         for pn, (n, score, how) in infer_pr_links(unnamed, tracked_issues).items():
             p = next(q for q in unnamed if q["number"] == pn)
@@ -887,7 +967,7 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
             t = parse_ts(((c.get("commit") or {}).get("committer") or {}).get("date"))
             message = (c.get("commit") or {}).get("message") or ""
             subject, _, rest = message.partition("\n")
-            for n in issue_refs(subject, rest, ref_rule):
+            for n in refs_in(subject, rest):
                 if n in resolver.by_issue and t is not None and (n not in merged_commit or t < merged_commit[n]):
                     merged_commit[n] = t
 
@@ -922,6 +1002,15 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
             # done by close date: the day the issue was closed (or, when still open, labelled done), and not before
             # its work merged; this is what moves on a busy day of closing requirements whose PRs opened weeks ago
             closed_for[n] = max(merged_work[n], marked[0])
+    # `closedCountsAsDone`: a requirement closed as completed is done even when no PR or commit ever named it
+    if entry.get("closedCountsAsDone"):
+        for n, it in by_number.items():
+            if (n in merged_for or not resolver.is_tracked(it) or it.get("state") != "closed"
+                    or it.get("state_reason") in ("not_planned", "duplicate")):
+                continue
+            t = parse_ts(it.get("closed_at"))
+            if t is not None:
+                merged_for[n] = closed_for[n] = t
     if labelled:
         log(f"{full}: labelled done: " + ", ".join(f"#{n}" for n in labelled))
     stuck = sorted(n for n in merged_work if n in by_number and n not in merged_for and resolver.is_tracked(by_number[n]))
@@ -957,13 +1046,14 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
     pr_mods = {p["number"]: attribute_pr(p, resolver, domain_to_module) or ([pr_file_mod[p["number"]]] if p["number"] in pr_file_mod else [])
                for p in prs}
     assign_modules(entry, gh, full, issues, resolver, prs_for, domain_to_module, module_names, warnings, pr_mods, rules)
+    label_pr_modules(entry, gh, full, prs, resolver, pr_mods, warnings, set(module_names))
     # with `foundationForUnlinkedPrs`, a PR that builds no tracked requirement (by name, or by inference when
     # inferPrLinks is on) is counted under M00 rather than placed in a module by its files or wording
     if entry.get("foundationForUnlinkedPrs"):
         linked_prs = {p["number"] for ps in prs_for.values() for p in ps}
         linked_prs |= {p["number"] for p in prs
                        if any(n in by_number and resolver.is_tracked(by_number[n])
-                              for n in issue_refs(p.get("title") or "", p.get("body") or "", ref_rule))}
+                              for n in refs_in(p.get("title") or "", p.get("body") or ""))}
         moved = 0
         for p in prs:
             if p["number"] not in linked_prs and pr_mods.get(p["number"]):
@@ -1067,7 +1157,7 @@ def analyze_repo(entry: dict, gh: GitHub, now: dt.datetime, allow_clone: bool) -
         "issues_per_pr_week": None if not m_week else round(closed_week / m_week, 2),
     }
     return {"repo": full, "title": entry.get("title") or full, "generated_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "has_code_columns": tree is not None, "warnings": warnings, "summary": summary, "modules": rows,
+            "closed_counts_as_done": bool(entry.get("closedCountsAsDone")), "has_code_columns": tree is not None, "warnings": warnings, "summary": summary, "modules": rows,
             "inferred_links": inferred,
             "window_start": points["week"].strftime("%Y-%m-%dT%H:%M:%SZ"),
             "merged_prs": [{"number": p["number"], "title": p.get("title"), "url": p.get("html_url"), "merged_at": p["merged_at"],

@@ -3,6 +3,6 @@
   "owner": { "name": "Homeport Health" },
   "metadata": { "description": "Standalone marketplace for the progress-tracker plugin: add this folder with `claude plugin marketplace add <folder>` then `/plugin install progress-tracker@progress-tracker-local`." },
   "plugins": [
-    { "name": "progress-tracker", "source": "./", "description": "Daily build-progress report by module across your active repositories, one artifact per repository.", "version": "0.9.0" }
+    { "name": "progress-tracker", "source": "./", "description": "Daily build-progress report by module across your active repositories, one artifact per repository.", "version": "0.9.1" }
   ]
 }

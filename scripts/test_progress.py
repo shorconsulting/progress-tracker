@@ -395,6 +395,47 @@ class FoundationForUnlinkedPrsTest(unittest.TestCase):
         self.assertEqual(r["warnings"], [])
 
 
+class IssueAliasesTest(unittest.TestCase):
+    def test_item_mentions_name_item_issues_and_closed_issues_count_as_done(self):
+        lab = lambda *n: [{"name": x} for x in n]  # noqa: E731
+        iss = lambda n, t, state="open": {"number": n, "title": t, "body": "", "state": state, "labels": lab("story"),  # noqa: E731
+                                          "created_at": "2026-09-01T00:00:00Z", "updated_at": "2026-10-10T00:00:00Z",
+                                          "closed_at": "2026-09-20T00:00:00Z" if state == "closed" else None, "state_reason": None}
+        issues = [iss(100, "AT-24: Write the guard"), iss(101, "AT-25: Doorways"), iss(102, "AT-26: Handles"),
+                  iss(7, "Old requirement nobody named", "closed")]
+        pr = lambda n, t, body="": {"number": n, "state": "closed", "title": t, "body": body, "labels": [],  # noqa: E731
+                                    "created_at": "2026-10-11T00:00:00Z", "merged_at": "2026-10-12T00:00:00Z"}
+        prs = [pr(20, "The guard (AT-24)"), pr(21, "Doorways", "agent-team step 1, AT-25 to AT-26"), pr(22, "Worklist item 24, not AT-3")]
+
+        class Fake:
+            gh = None
+            def get(self, path):
+                return [] if "/files" in path else {"default_branch": "main"}
+            def paginate(self, path, per_page=100):
+                return prs if "/pulls" in path else [] if "/commits" in path or "/labels" in path else issues
+
+        entry = {"repo": "o/r", "moduleSource": "labels", "moduleLabelPattern": r"^(?!)(\d+)$", "moduleIdFormat": "M{n:02d}",
+                 "trackedIssueLabels": ["story"], "qaLabels": [], "doneLabels": [], "unattributedIsExpected": True}
+        plain = progress.analyze_repo(dict(entry), Fake(), NOW, False)["summary"]
+        self.assertEqual((plain["issues_started"], plain["issues_done"]), (0, 0))
+        on = dict(entry, closedCountsAsDone=True,
+                  issueAliases={"mention": r"\bAT-(\d+)(?:\s*(?:-|to)\s*(?:AT-)?(\d+))?", "title": r"^AT-(\d+)\b"})
+        r = progress.analyze_repo(on, Fake(), NOW, False)
+        self.assertEqual((r["summary"]["issues_started"], r["summary"]["issues_done"]), (4, 1))  # 24, 25, 26 started; #7 done
+        self.assertTrue(r["closed_counts_as_done"])
+
+
+class BackdateAndBacklinkTest(unittest.TestCase):
+    def test_planned_moves_created_back_and_built_by_names_the_issue(self):
+        issues = [{"number": 9, "created_at": "2026-11-05T00:00:00Z", "body": "x\nPlanned: 2026-09-22\nBuilt by: #911, #914 and #3\n"},
+                  {"number": 8, "created_at": "2026-09-01T00:00:00Z", "body": "Planned: 2026-10-01"}]
+        prs = [{"number": 911, "body": "the guard"}, {"number": 914, "body": None}, {"number": 5, "body": "other"}]
+        progress.backdate_and_backlink(issues, prs)
+        self.assertEqual(issues[0]["created_at"], "2026-09-22T00:00:00Z")
+        self.assertEqual(issues[1]["created_at"], "2026-09-01T00:00:00Z")  # never moved later
+        self.assertEqual([progress.issue_refs("", p["body"] or "") for p in prs], [{9}, {9}, set()])
+
+
 class WindowTest(unittest.TestCase):
     def test_seven_days_same_time_of_day(self):
         now = dt.datetime(2026, 10, 15, 18, 45, tzinfo=UTC)  # Thursday 11:45 PDT
