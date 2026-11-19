@@ -87,7 +87,7 @@ never Monday to today. The 1-day change is a secondary figure.
 - Started % = requirements with at least one PR opened or merged / all tracked requirements. Done = merged work that
   is also closed or labeled done. "Still to be built" = no PR names the requirement yet. Both bars use today's
   requirement list, so a bar moves only when the work moves.
-- State pill: Near done at 85% or more done; Early under 30% started; otherwise In progress.
+- State pill: Done when every requirement is done; Near done at 85% or more done; Early under 30% started; otherwise In progress.
 - Frontend / Backend / Wired columns come from the module probes file named in the repository's config entry
   (`config/modules/<name>.json`); a repository without one reports issue and PR progress only.
 - `timezone` in `repos.json` (default `America/Los_Angeles`) sets which clock "the same time of day" means.
