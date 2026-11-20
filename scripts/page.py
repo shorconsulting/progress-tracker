@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 e = html.escape
 NEAR_DONE, EARLY_BELOW = 85, 30
-STATE = {"near": "Near done", "mid": "In progress", "early": "Early"}
+STATE = {"done": "Done", "near": "Near done", "mid": "In progress", "early": "Early"}
 
 
 def pct(n: int, d: int) -> int:
@@ -25,7 +25,9 @@ def clean(t: str) -> str:
     return re.sub(r"\s*—\s*", ", ", str(t))
 
 
-def state(done_pct: int, started_pct: int) -> str:
+def state(done_pct: int, started_pct: int, all_done: bool = False) -> str:
+    if all_done:  # every requirement done, not a rounded 100%
+        return "done"
     if done_pct >= NEAR_DONE:
         return "near"
     return "early" if started_pct < EARLY_BELOW else "mid"
@@ -46,7 +48,7 @@ def facts(m: dict) -> dict:
     n = i["total"]
     s0, s1, d0, d1 = pct(w["started"], n), pct(i["started"], n), pct(w["done"], n), pct(i["done"], n)
     return {"n": n, "s0": s0, "s1": s1, "d0": d0, "d1": d1, "w": w, "left": n - i["started"],
-            "state": state(d1, s1), "moved": i["done"] - w["done"], "started_moved": i["started"] - w["started"]}
+            "state": state(d1, s1, n > 0 and i["done"] >= n), "moved": i["done"] - w["done"], "started_moved": i["started"] - w["started"]}
 
 
 def bar(label: str, started: int, done: int, n: int, cls: str, pc: int) -> str:
@@ -158,7 +160,7 @@ def repo_sections(r: dict, win: dict, notes: dict | None) -> str:
     gaps = sorted((m for m in sized if fx[m["id"]]["left"]), key=lambda m: -fx[m["id"]]["left"])[:6]
     gaps_h = "".join(f'{sm(m)}<span class="muted">· {fx[m["id"]]["left"]} requirement{"s" if fx[m["id"]]["left"] != 1 else ""} still to be built ({pct(fx[m["id"]]["left"], fx[m["id"]]["n"])}%)</span></li>' for m in gaps) \
         or '<li class="muted">No requirement is still to be built.</li>'
-    near = [m for m in sized if fx[m["id"]]["state"] == "near"]
+    near = [m for m in sized if fx[m["id"]]["state"] in ("near", "done")]
     near_h = f"{NEAR_DONE}% or more done: " + (", ".join(label_of(m) for m in near) or "none yet") + "."
 
     rows = []
@@ -211,7 +213,7 @@ def how_to_read(win: dict, code: bool, closed_done: bool = False) -> str:
             + ('A requirement closed as completed also counts as done when no pull request ever named it. ' if closed_done else '')
             + '<b>Still to be built</b> means no pull request names it yet. Both bars use today\'s requirement list, so a bar moves only when the work moves. '
             '"Δ 7 days" is the change in percent done since the earlier date; "Δ 1 day" is the change in percent started in the last 24 hours.</p>'
-            f'<p>State pills: Near done is {NEAR_DONE}% or more done; Early is under {EARLY_BELOW}% started; everything else is In progress.'
+            f'<p>State pills: Done is every requirement done; Near done is {NEAR_DONE}% or more done; Early is under {EARLY_BELOW}% started; everything else is In progress.'
             + (' Frontend, Backend and Wired come from the code in the repository: route files present, a backend route table, and an API client used by the app. A triangle marks a column that improved in 7 days.' if code else '')
             + '</p><p>The plain-terms notes are drafted from the pull requests merged in the window and checked, sentence by sentence, by a second reviewer before the page is published.</p>')
 
@@ -297,7 +299,7 @@ th.dcol{text-transform:none;letter-spacing:0}.dcol{width:1%;white-space:nowrap}
 .pv{font:.75rem var(--mono);text-align:right;font-variant-numeric:tabular-nums}
 .pb.was .bar{opacity:.55;height:8px}.pb.was .pv{color:var(--muted)}.pb.now .pv{font-weight:600}
 .pill{font:600 .72rem var(--body);padding:2px 8px;border-radius:999px;white-space:nowrap}
-.pill.near{color:var(--near);background:var(--near-bg)}.pill.mid{color:var(--mid);background:var(--mid-bg)}.pill.early{color:var(--early);background:var(--early-bg)}
+.pill.near,.pill.done{color:var(--near);background:var(--near-bg)}.pill.mid{color:var(--mid);background:var(--mid-bg)}.pill.early{color:var(--early);background:var(--early-bg)}
 .cs{font:600 .72rem var(--body);padding:1px 8px;border-radius:999px;background:var(--none)}
 .cs.c-done{color:var(--near);background:var(--near-bg)}.cs.c-partial{color:var(--mid);background:var(--mid-bg)}.cs.c-none{color:var(--early);background:var(--early-bg)}
 .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px}.two>div{min-width:0;display:grid;gap:8px;align-content:start}

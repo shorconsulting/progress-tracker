@@ -508,6 +508,11 @@ class LayoutTest(unittest.TestCase):
         self.assertIn("In progress</span>", h) # Orders
         self.assertIn("+50%", h)
 
+    def test_state_done_only_when_every_requirement_done(self):
+        self.assertEqual(progress.page.state(100, 100, True), "done")
+        self.assertEqual(progress.page.state(100, 100, False), "near")  # 999 of 1000 rounds to 100%
+        self.assertEqual(progress.page.STATE["done"], "Done")
+
     def test_still_to_be_built_wording(self):
         h = self.page()
         self.assertIn("still to be built (", h)
